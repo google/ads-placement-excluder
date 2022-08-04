@@ -1,6 +1,20 @@
+# Temp deployment
+.temp/
+.zip
+
 # Virtual envs
 env/
 venv/
 
 # IDEs
 .idea/
+
+# Terraform
+terraform.tfvars
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+
+# Python
+__pycache__
