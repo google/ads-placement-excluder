@@ -33,3 +33,8 @@ variable "google_ads_login_customer_id" {
   type        = string
   description = "The Google Ads MCC customer ID with no dashes"
 }
+
+variable "config_sheet_id" {
+  type        = string
+  description = "The Google Sheeet ID containing the config"
+}

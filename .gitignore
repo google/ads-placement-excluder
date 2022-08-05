@@ -5,6 +5,7 @@
 # Virtual envs
 env/
 venv/
+venvs/
 
 # IDEs
 .idea/
@@ -18,3 +19,9 @@ terraform.tfvars
 
 # Python
 __pycache__
+
+# Google Cloud credentials
+creds.json
+
+# OS
+.DS_STORE
