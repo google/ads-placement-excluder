@@ -78,11 +78,11 @@ resource "google_cloudfunctions_function" "ads_report_function" {
   timeout               = 540
   available_memory_mb   = 1024
   entry_point           = "main"
-  trigger_http          = true
-  depends_on            = [
-    google_project_service.cloudfunctions_api,
-    google_project_service.cloudbuild_api
-  ]
+
+  event_trigger {
+    event_type = "providers/cloud.pubsub/eventTypes/topic.publish"
+    resource   = google_pubsub_topic.ads_report_pubsub_topic.name
+  }
 
   environment_variables = {
     GOOGLE_ADS_USE_PROTO_PLUS    = false
@@ -102,3 +102,10 @@ resource "google_bigquery_dataset" "dataset" {
   description                 = "Ads Placement Excluder BQ Dataset"
   delete_contents_on_destroy  = true
 }
+
+# Pub/sub
+resource "google_pubsub_topic" "ads_report_pubsub_topic" {
+  name                       = "ads-report-topic"
+  message_retention_duration = "604800s"
+}
+

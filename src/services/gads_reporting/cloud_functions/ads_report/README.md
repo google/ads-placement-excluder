@@ -27,16 +27,16 @@ pip install -r requirements_dev.txt
 Then start the server by running:
 
 ```
-functions_framework --target=main
+functions-framework --target=main --signature-type=event --port=8080
 ```
 
-You can then make a post request by running the following
+You can then make a post request by running the following:
 
 ```
 curl localhost:8080 \
   -X POST \
   -H "Content-Type: application/json" \
-  -d '{ "customer_id": "1234567890", "lookback_days": 90}'
+  -d "{ \"data\": { \"data\": \"$(echo '{ "customer_id": "1234567890", "lookback_days": 90}' | base64)\" }}"
 ```
 
 ### Mac users

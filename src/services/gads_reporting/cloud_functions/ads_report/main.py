@@ -12,12 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Output the placement report from Google Ads to BigQuery."""
+import base64
+import json
 from datetime import datetime, timedelta
 import logging
 import os
 import sys
-from typing import Tuple
-import flask
+from typing import Any, Dict, Tuple
 from google.ads.googleads.client import GoogleAdsClient
 import jsonschema
 import pandas as pd
@@ -29,7 +30,7 @@ logger.setLevel(logging.INFO)
 GOOGLE_CLOUD_PROJECT = os.environ.get('GOOGLE_CLOUD_PROJECT')
 
 # TODO(b/241376573): add filters for Google Ads Report
-request_schema = {
+message_schema = {
     'type': 'object',
     'properties': {
         'customer_id': {'type': 'string'},
@@ -39,40 +40,31 @@ request_schema = {
 }
 
 
-def main(request: flask.Request) -> flask.Response:
+def main(event: Dict[str, Any], context: Dict[str, Any]) -> None:
     """The entry point: extract the data from the payload and starts the job.
 
-    The request payload must match the request_schema object above.
+    The pub/sub message must match the message_schema object above.
 
     Args:
-        request (flask.Request): HTTP request object.
-    Returns:
-        The flask response.
+        event: A dictionary representing the event data payload.
+        context: An object containing metadata about the event.
     """
+    del context
     logger.info('Google Ads Reporting Service triggered.')
-    request_json = request.get_json()
-    logger.info('JSON payload: %s', request_json)
-    response = {}
+    logger.info('Message: %s', event)
+    message = base64.b64decode(event['data']).decode('utf-8')
+    logger.info('Decoded message: %s', message)
+    message_json = json.loads(message)
+    logger.info('JSON message: %s', message_json)
 
-    try:
-        jsonschema.validate(instance=request_json, schema=request_schema)
-    except jsonschema.exceptions.ValidationError as err:
-        logger.error('Invalid request payload: %s', err)
-        response['status'] = 'Failed'
-        response['message'] = err.message
-        return flask.Response(flask.json.dumps(response),
-                              status=400,
-                              mimetype='application/json')
+    # Will raise jsonschema.exceptions.ValidationError if the schema is invalid
+    jsonschema.validate(instance=message_json, schema=message_schema)
 
     start_job(
-        request_json.get('customer_id'),
-        request_json.get('lookback_days'))
+        message_json.get('customer_id'),
+        message_json.get('lookback_days'))
 
-    response['status'] = 'Success'
-    response['message'] = 'Downloaded data successfully'
-    return flask.Response(flask.json.dumps(response),
-                          status=200,
-                          mimetype='application/json')
+    logger.info('Done')
 
 
 def start_job(customer_id: str, lookback_days: int = 90) -> None:
@@ -103,6 +95,7 @@ def get_report_df(
         A Pandas DataFrame containing the report results.
     """
     logger.info('Getting report stream for %s', customer_id)
+    now = datetime.now()
     client = GoogleAdsClient.load_from_env(version='v11')
     ga_service = client.get_service("GoogleAdsService")
 
@@ -120,6 +113,7 @@ def get_report_df(
     for batch in stream:
         for row in batch.results:
             data.append([
+                now,
                 row.customer.id,
                 row.group_placement_view.placement,
                 row.group_placement_view.target_url,
@@ -134,6 +128,7 @@ def get_report_df(
                 row.metrics.all_conversions_from_interactions_rate,
             ])
     return pd.DataFrame(data, columns=[
+        'datetime_updated',
         'customer_id',
         'placement',
         'placement_target_url',
