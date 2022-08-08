@@ -43,6 +43,7 @@ following these steps ([instructions](https://learn.hashicorp.com/tutorials/terr
    google_cloud_client_secret = ""
    google_ads_developer_token = ""
    google_ads_login_customer_id = ""
+   config_sheet_id= = ""
    ```
    Note that the `google_ads_login_customer_id` is the MCC customer ID in Google
    Ads.
