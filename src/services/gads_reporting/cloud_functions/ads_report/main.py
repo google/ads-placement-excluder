@@ -18,25 +18,28 @@ from datetime import datetime, timedelta
 import logging
 import os
 import sys
-from typing import Any, Dict, Tuple
+from typing import Any, Dict, Optional, Tuple
 from google.ads.googleads.client import GoogleAdsClient
 import jsonschema
 import pandas as pd
+
 
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+# The Google Cloud project containing the BigQuery dataset
 GOOGLE_CLOUD_PROJECT = os.environ.get('GOOGLE_CLOUD_PROJECT')
 
-# TODO(b/241376573): add filters for Google Ads Report
+# The schema of the JSON in the event payload
 message_schema = {
     'type': 'object',
     'properties': {
         'customer_id': {'type': 'string'},
         'lookback_days': {'type': 'number'},
+        'gads_filters': {'type': 'string'},
     },
-    'required': ['customer_id', 'lookback_days']
+    'required': ['customer_id', 'lookback_days', 'gads_filters', ]
 }
 
 
@@ -62,34 +65,39 @@ def main(event: Dict[str, Any], context: Dict[str, Any]) -> None:
 
     start_job(
         message_json.get('customer_id'),
-        message_json.get('lookback_days'))
+        message_json.get('lookback_days'),
+        message_json.get('gads_filters'),
+    )
 
     logger.info('Done')
 
 
-def start_job(customer_id: str, lookback_days: int = 90) -> None:
+def start_job(customer_id: str, lookback_days: int, gads_filters: str) -> None:
     """Start the job to run the report from Google Ads & output it.
 
     Args:
         customer_id: the customer ID to fetch the Google Ads data for.
         lookback_days: the number of days from today to look back when fetching
             the report.
+        gads_filters: the filters to apply to the Google Ads report query
     """
     logger.info('Starting job to fetch data for %s', customer_id)
-    report_df = get_report_df(customer_id, lookback_days)
+    report_df = get_report_df(customer_id, lookback_days, gads_filters)
     write_results_to_bigquery(report_df, customer_id)
     logger.info('Job complete')
 
 
 def get_report_df(
         customer_id: str,
-        lookback_days: int) -> pd.DataFrame:
+        lookback_days: int,
+        gads_filters: str) -> pd.DataFrame:
     """Run the placement report in Google Ads & return a Dataframe of the data.
 
     Args:
         customer_id: the customer ID to fetch the Google Ads data for.
         lookback_days: the number of days from today to look back when fetching
             the report.
+        gads_filters: the filters to apply to the Google Ads report query
 
     Returns:
         A Pandas DataFrame containing the report results.
@@ -99,7 +107,7 @@ def get_report_df(
     client = GoogleAdsClient.load_from_env(version='v11')
     ga_service = client.get_service("GoogleAdsService")
 
-    query = get_report_query(lookback_days)
+    query = get_report_query(lookback_days, gads_filters)
     search_request = client.get_type("SearchGoogleAdsStreamRequest")
     search_request.customer_id = customer_id
     search_request.query = query
@@ -144,18 +152,23 @@ def get_report_df(
     ])
 
 
-def get_report_query(lookback_days: int) -> str:
+def get_report_query(lookback_days: int,
+                     gads_filters: Optional[str] = None) -> str:
     """Build and return the Google Ads report query.
 
     Args:
         lookback_days: the number of days from today to look back when fetching
             the report.
+        gads_filters: the filters to apply to the Google Ads report query
 
     Return:
         The Google Ads query.
     """
     logger.info('Getting report query')
     date_from, date_to = get_query_dates(lookback_days)
+    where_query = ''
+    if gads_filters is not None:
+        where_query = f'AND {gads_filters}'
     query = f"""
         SELECT
             customer.id,
@@ -175,6 +188,7 @@ def get_report_query(lookback_days: int) -> str:
         WHERE group_placement_view.placement_type = "YOUTUBE_CHANNEL"
             AND campaign.advertising_channel_type = "VIDEO"
             AND segments.date BETWEEN "{date_from}" AND "{date_to}"
+            {where_query}
     """
     logger.info(query)
     return query

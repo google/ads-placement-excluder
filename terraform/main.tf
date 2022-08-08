@@ -106,7 +106,7 @@ resource "google_storage_bucket_object" "ads_account" {
 
 resource "google_cloudfunctions_function" "ads_report_function" {
   region                = var.region
-  name                  = "ads_placement_excluder_ads_report"
+  name                  = "ape-gads_reporting-ads_report"
   description           = "Move the placement report from Google Ads to BigQuery."
   runtime               = "python310"
   source_archive_bucket = google_storage_bucket.function_bucket.name
@@ -133,7 +133,7 @@ resource "google_cloudfunctions_function" "ads_report_function" {
 }
 resource "google_cloudfunctions_function" "ads_account_function" {
   region                = var.region
-  name                  = "ads_placement_excluder_ads_account"
+  name                  = "ape-gads_reporting-ads_account"
   description           = "Identify which reports to run the Google Ads report for."
   runtime               = "python310"
   source_archive_bucket = google_storage_bucket.function_bucket.name

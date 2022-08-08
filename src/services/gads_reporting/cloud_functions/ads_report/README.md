@@ -36,7 +36,7 @@ You can then make a post request by running the following:
 curl localhost:8080 \
   -X POST \
   -H "Content-Type: application/json" \
-  -d "{ \"data\": { \"data\": \"$(echo '{ "customer_id": "1234567890", "lookback_days": 90}' | base64)\" }}"
+  -d "{ \"data\": { \"data\": \"$(echo '{ "customer_id": "1234567890", "lookback_days": 90, "gads_filters": "metrics.impressions > 0"}' | base64)\" }}"
 ```
 
 ### Mac users

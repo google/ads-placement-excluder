@@ -28,17 +28,22 @@ logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+# The Google Cloud project containing the pub/sub topic
 GOOGLE_CLOUD_PROJECT = os.environ.get('GOOGLE_CLOUD_PROJECT')
+# The name of the pub/sub topic
 APE_ADS_REPORT_PUBSUB_TOPIC = os.environ.get('APE_ADS_REPORT_PUBSUB_TOPIC')
-
+# The access scopes used in this function
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
+# The range in the sheet containing the config data
+SHEET_RANGE = 'Google Ads!A2:D'
 
+# The schema of the JSON in the request
 request_schema = {
     'type': 'object',
     'properties': {
         'sheet_id': {'type': 'string'},
     },
-    'required': ['sheet_id',]
+    'required': ['sheet_id', ]
 }
 
 
@@ -99,7 +104,8 @@ def get_config_from_sheet(sheet_id: str) -> List[Dict[str, Any]]:
         [
             {
                 'customer_id': '1234567890'
-                'lookback_days': 90
+                'lookback_days': 90,
+                'gads_filters': 'metrics.clicks > 10',
             },
             ...
         ]
@@ -109,16 +115,20 @@ def get_config_from_sheet(sheet_id: str) -> List[Dict[str, Any]]:
     sheets_service = build('sheets', 'v4', credentials=credentials)
     sheet = sheets_service.spreadsheets()
     result = sheet.values().get(spreadsheetId=sheet_id,
-                                range='Google Ads!A2:B').execute()
+                                range=SHEET_RANGE).execute()
     rows = result.get('values', [])
     logger.info('Returned %i rows', len(rows))
 
     account_configs = []
     for row in rows:
-        account_configs.append({
-            'customer_id': row[0],
-            'lookback_days': int(row[1]),
-        })
+        if row[3] == 'Enabled':
+            account_configs.append({
+                'customer_id': row[0],
+                'lookback_days': int(row[1]),
+                'gads_filters': row[2],
+            })
+        else:
+            logger.info('Ignoring disabled row: %s', row)
 
     logger.info('Account configs:')
     logger.info(account_configs)
