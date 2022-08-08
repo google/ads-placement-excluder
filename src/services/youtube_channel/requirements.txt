@@ -1,0 +1,7 @@
+google-api-python-client==2.55.0
+google-auth==2.10.0
+google-auth-httplib2==0.1.0
+google-auth-oauthlib==0.5.2
+pandas==1.4.3
+pydata-google-auth==1.4.0
+google-cloud-bigquery==3.3.0
