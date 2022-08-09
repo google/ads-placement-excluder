@@ -20,6 +20,7 @@ import sys
 from typing import Any, Dict, List
 from google.ads.googleads.client import GoogleAdsClient
 import google.auth
+import google.auth.credentials
 from googleapiclient.discovery import build
 from google.cloud import bigquery
 import jsonschema
@@ -94,14 +95,14 @@ def run(customer_id: str) -> None:
     logger.info('Job complete')
 
 
-def get_auth_credentials() -> google.auth.credentials.Credential:
+def get_auth_credentials() -> google.auth.credentials.Credentials:
     """Return credentials for Google APIs."""
     credentials, project_id = google.auth.default(scopes=SCOPES)
     return credentials
 
 
 def get_config_filters(customer_id: str,
-                       credentials: google.auth.credentials.Credential) -> str:
+                       credentials: google.auth.credentials.Credentials) -> str:
     """Get the filters for identifying a spam placement from the config.
 
     Args:
@@ -134,7 +135,7 @@ def get_config_filters(customer_id: str,
 
 def get_spam_placements(customer_id: str,
                         filters: str,
-                        credentials: google.auth.credentials.Credential
+                        credentials: google.auth.credentials.Credentials
 ) -> List[str]:
     """Run a query to find spam placements in BigQuery and return as a list.
 
@@ -171,7 +172,7 @@ def exclude_placements_in_gads(customer_id: str, placements: List[str]) -> None:
 
 def write_exclusions_to_bigquery(customer_id: str,
                                  placements: List[str],
-                                 credentials: google.auth.credentials.Credential
+                                 credentials: google.auth.credentials.Credentials
 ) -> None:
     """Write the exclusions to BigQuery to maintain history of changes.
 
