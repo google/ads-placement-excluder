@@ -20,6 +20,7 @@ import os
 import sys
 from typing import Any, Dict, Optional, Tuple
 from google.ads.googleads.client import GoogleAdsClient
+from google.cloud import pubsub_v1
 import jsonschema
 import pandas as pd
 
@@ -30,6 +31,8 @@ logger.setLevel(logging.INFO)
 
 # The Google Cloud project containing the BigQuery dataset
 GOOGLE_CLOUD_PROJECT = os.environ.get('GOOGLE_CLOUD_PROJECT')
+# The pub/sub topic to send the success message to
+APE_YOUTUBE_PUBSUB_TOPIC = os.environ.get('APE_YOUTUBE_PUBSUB_TOPIC')
 
 # The schema of the JSON in the event payload
 message_schema = {
@@ -84,6 +87,7 @@ def start_job(customer_id: str, lookback_days: int, gads_filters: str) -> None:
     logger.info('Starting job to fetch data for %s', customer_id)
     report_df = get_report_df(customer_id, lookback_days, gads_filters)
     write_results_to_bigquery(report_df, customer_id)
+    send_messages_to_pubsub(customer_id)
     logger.info('Job complete')
 
 
@@ -238,3 +242,29 @@ def write_results_to_bigquery(report_df: pd.DataFrame,
         project_id=GOOGLE_CLOUD_PROJECT,
         if_exists='replace',
     )
+
+
+def send_messages_to_pubsub(customer_id: str) -> None:
+    """Push the customer ID to pub/sub when the job completes.
+
+    Args:
+        customer_id: the customer ID to fetch the Google Ads data for.
+    """
+    logger.info('Sending message to pub/sub for customer_id: %s', customer_id)
+
+    publisher = pubsub_v1.PublisherClient()
+
+    # The `topic_path` method creates a fully qualified identifier
+    # in the form `projects/{project_id}/topics/{topic_id}`
+    logger.info('Publishing to topic: %s', APE_YOUTUBE_PUBSUB_TOPIC)
+    topic_path = publisher.topic_path(
+        GOOGLE_CLOUD_PROJECT, APE_YOUTUBE_PUBSUB_TOPIC)
+    logger.info('Full topic path: %s', topic_path)
+
+    message_str = json.dumps({'customer_id': customer_id})
+    logger.info('Sending message: %s', message_str)
+    # Data must be a bytestring
+    data = message_str.encode("utf-8")
+    publisher.publish(topic_path, data)
+
+    logger.info('Message published')
