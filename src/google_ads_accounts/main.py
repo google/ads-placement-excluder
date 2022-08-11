@@ -34,8 +34,6 @@ GOOGLE_CLOUD_PROJECT = os.environ.get('GOOGLE_CLOUD_PROJECT')
 APE_ADS_REPORT_PUBSUB_TOPIC = os.environ.get('APE_ADS_REPORT_PUBSUB_TOPIC')
 # The access scopes used in this function
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
-# The range in the sheet containing the config data
-SHEET_RANGE = 'Google Ads!A2:D'
 
 # The schema of the JSON in the request
 request_schema = {
@@ -114,25 +112,57 @@ def get_config_from_sheet(sheet_id: str) -> List[Dict[str, Any]]:
     credentials, project_id = google.auth.default(scopes=SCOPES)
     sheets_service = build('sheets', 'v4', credentials=credentials)
     sheet = sheets_service.spreadsheets()
-    result = sheet.values().get(spreadsheetId=sheet_id,
-                                range=SHEET_RANGE).execute()
-    rows = result.get('values', [])
-    logger.info('Returned %i rows', len(rows))
 
+    customer_ids = sheet.values().get(
+        spreadsheetId=sheet_id,
+        range='google_ads_customer_ids').execute().get('values', [])
+    gads_filters = sheet.values().get(
+        spreadsheetId=sheet_id,
+        range='google_ads_filters').execute().get('values', [])
+    lookback_days = sheet.values().get(
+        spreadsheetId=sheet_id,
+        range='google_ads_lookback_days').execute().get('value', '30')
+
+    gads_filters_str = gads_filters_to_gaql_string(gads_filters)
+
+    logger.info('Returned %i customer_ids', len(customer_ids))
     account_configs = []
-    for row in rows:
-        if row[3] == 'Enabled':
+    for customer_id, is_enabled in customer_ids:
+        if is_enabled == 'Enabled':
             account_configs.append({
-                'customer_id': row[0],
-                'lookback_days': int(row[1]),
-                'gads_filters': row[2],
+                'customer_id': customer_id,
+                'lookback_days': int(lookback_days),
+                'gads_filters': gads_filters_str,
             })
         else:
-            logger.info('Ignoring disabled row: %s', row)
+            logger.info('Ignoring disabled row: %s', customer_id)
 
     logger.info('Account configs:')
     logger.info(account_configs)
     return account_configs
+
+
+def gads_filters_to_gaql_string(config_filters: List[List[str]]) -> str:
+    """Turn the Google Ads filters into a GAQL compatible string.
+
+    The config sheet has the filters in a list of lists, these need to be
+    combined, so they can be used in a WHERE clause in the GAQL that is passed
+    to Google Ads. See:
+    https://developers.google.com/google-ads/api/docs/query/overview
+
+    Each row is "AND" together.
+
+    Args:
+        config_filters: the filters from the Google Sheet
+
+    Returns:
+        A string that can be used in the WHERE statement of the Google Ads Query
+        Language.
+    """
+    conditions = []
+    for row in config_filters:
+        conditions.append(f'metrics.{row[0]} {row[1]} {row[2]}')
+    return ' AND '.join(conditions)
 
 
 def send_messages_to_pubsub(messages: List[Dict[str, Any]]) -> None:

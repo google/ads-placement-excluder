@@ -20,6 +20,16 @@ class MainTestCase(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         mock_run.assert_called_once()
 
+    def test_gads_filters_to_sql_string(self):
+        config_filters = [['impressions', '>', '1']]
+        gaql = main.gads_filters_to_gaql_string(config_filters)
+        self.assertEqual(gaql, 'metrics.impressions > 1')
+
+        config_filters = [['impressions', '>', '1'], ['clicks', '<', '50']]
+        gaql = main.gads_filters_to_gaql_string(config_filters)
+        self.assertEqual(gaql,
+                         'metrics.impressions > 1 AND metrics.clicks < 50')
+
 
 if __name__ == '__main__':
     unittest.main()
