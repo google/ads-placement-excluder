@@ -61,7 +61,7 @@ def main(event: Dict[str, Any], context: Dict[str, Any]) -> None:
         what is expected.
     """
     del context
-    logger.info('Google Ads Exclusion service triggered.')
+    logger.info('YouTube channel service triggered.')
     logger.info('Message: %s', event)
     message = base64.b64decode(event['data']).decode('utf-8')
     logger.info('Decoded message: %s', message)
@@ -84,7 +84,10 @@ def run(customer_id: str) -> None:
     """
     credentials = get_auth_credentials()
     channel_ids = get_placements_query(customer_id, credentials)
-    get_youtube_dataframe(channel_ids, credentials)
+    if len(channel_ids) > 0:
+        get_youtube_dataframe(channel_ids, credentials)
+    else:
+        logger.info('No channel IDs to process')
     logger.info('Done')
 
 
