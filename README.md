@@ -15,11 +15,7 @@ automate identifying these placements, and exclude them from future advertising.
 
 ## Architecture
 
-The solution is split into the following microservices:
-
-- [Google Ads Reporting Service](src/services/gads_reporting/cloud_functions/ads_report/README.md)
-- [YouTube Channel Service](./src/services/youtube_channel/README.md)
-- [Google Ads Exclusion Service](./src/services/gads_exclusion/README.md)
+TODO: write me.
 
 ## Deployment
 

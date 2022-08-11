@@ -79,38 +79,55 @@ resource "google_storage_bucket" "function_bucket" {
     }
   }
 }
-
-data "archive_file" "ads_report_zip" {
+data "archive_file" "google_ads_accounts_zip" {
   type        = "zip"
-  output_path = ".temp/ads_report_code_source.zip"
-  source_dir  = "../src/services/gads_reporting/cloud_functions/ads_report/"
+  output_path = ".temp/google_ads_accounts_source.zip"
+  source_dir  = "../src/google_ads_accounts"
 }
-data "archive_file" "ads_account_zip" {
+data "archive_file" "google_ads_report_zip" {
   type        = "zip"
-  output_path = ".temp/ads_account_code_source.zip"
-  source_dir  = "../src/services/gads_reporting/cloud_functions/ads_account/"
+  output_path = ".temp/google_ads_report_source.zip"
+  source_dir  = "../src/google_ads_report"
 }
 
-resource "google_storage_bucket_object" "ads_report" {
-  name       = "ads_report_${data.archive_file.ads_report_zip.output_md5}.zip"
+resource "google_storage_bucket_object" "google_ads_accounts" {
+  name       = "google_ads_accounts_${data.archive_file.google_ads_accounts_zip.output_md5}.zip"
   bucket     = google_storage_bucket.function_bucket.name
-  source     = data.archive_file.ads_report_zip.output_path
-  depends_on = [data.archive_file.ads_report_zip]
+  source     = data.archive_file.google_ads_accounts_zip.output_path
+  depends_on = [data.archive_file.google_ads_accounts_zip]
 }
-resource "google_storage_bucket_object" "ads_account" {
-  name       = "ads_account_${data.archive_file.ads_account_zip.output_md5}.zip"
+resource "google_storage_bucket_object" "google_ads_report" {
+  name       = "google_ads_report_${data.archive_file.google_ads_report_zip.output_md5}.zip"
   bucket     = google_storage_bucket.function_bucket.name
-  source     = data.archive_file.ads_account_zip.output_path
-  depends_on = [data.archive_file.ads_account_zip]
+  source     = data.archive_file.google_ads_report_zip.output_path
+  depends_on = [data.archive_file.google_ads_report_zip]
 }
 
-resource "google_cloudfunctions_function" "ads_report_function" {
+resource "google_cloudfunctions_function" "google_ads_accounts_function" {
   region                = var.region
-  name                  = "ape-gads_reporting-ads_report"
+  name                  = "ape-google_ads_accounts"
+  description           = "Identify which reports to run the Google Ads report for."
+  runtime               = "python310"
+  source_archive_bucket = google_storage_bucket.function_bucket.name
+  source_archive_object = google_storage_bucket_object.google_ads_accounts.name
+  service_account_email = google_service_account.service_account.email
+  timeout               = 540
+  available_memory_mb   = 1024
+  entry_point           = "main"
+  trigger_http          = true
+
+  environment_variables = {
+    GOOGLE_CLOUD_PROJECT         = var.project_id
+    APE_ADS_REPORT_PUBSUB_TOPIC  = google_pubsub_topic.google_ads_report_pubsub_topic.name
+  }
+}
+resource "google_cloudfunctions_function" "google_ads_report_function" {
+  region                = var.region
+  name                  = "ape-google_ads_report"
   description           = "Move the placement report from Google Ads to BigQuery."
   runtime               = "python310"
   source_archive_bucket = google_storage_bucket.function_bucket.name
-  source_archive_object = google_storage_bucket_object.ads_report.name
+  source_archive_object = google_storage_bucket_object.google_ads_report.name
   service_account_email = google_service_account.service_account.email
   timeout               = 540
   available_memory_mb   = 1024
@@ -118,7 +135,7 @@ resource "google_cloudfunctions_function" "ads_report_function" {
 
   event_trigger {
     event_type = "providers/cloud.pubsub/eventTypes/topic.publish"
-    resource   = google_pubsub_topic.ads_report_pubsub_topic.name
+    resource   = google_pubsub_topic.google_ads_report_pubsub_topic.name
   }
 
   environment_variables = {
@@ -131,24 +148,6 @@ resource "google_cloudfunctions_function" "ads_report_function" {
     GOOGLE_CLOUD_PROJECT         = var.project_id
   }
 }
-resource "google_cloudfunctions_function" "ads_account_function" {
-  region                = var.region
-  name                  = "ape-gads_reporting-ads_account"
-  description           = "Identify which reports to run the Google Ads report for."
-  runtime               = "python310"
-  source_archive_bucket = google_storage_bucket.function_bucket.name
-  source_archive_object = google_storage_bucket_object.ads_account.name
-  service_account_email = google_service_account.service_account.email
-  timeout               = 540
-  available_memory_mb   = 1024
-  entry_point           = "main"
-  trigger_http          = true
-
-  environment_variables = {
-    GOOGLE_CLOUD_PROJECT         = var.project_id
-    APE_ADS_REPORT_PUBSUB_TOPIC  = google_pubsub_topic.ads_report_pubsub_topic.name
-  }
-}
 
 # BIGQUERY ---------------------------------------------------------------------
 resource "google_bigquery_dataset" "dataset" {
@@ -159,8 +158,8 @@ resource "google_bigquery_dataset" "dataset" {
 }
 
 # PUB/SUB ----------------------------------------------------------------------
-resource "google_pubsub_topic" "ads_report_pubsub_topic" {
-  name                       = "ads-report-topic"
+resource "google_pubsub_topic" "google_ads_report_pubsub_topic" {
+  name                       = "ape-google-ads-report-topic"
   message_retention_duration = "604800s"
 }
 
@@ -182,7 +181,7 @@ resource "google_cloud_scheduler_job" "gads_reporting_scheduler" {
 
   http_target {
     http_method = "POST"
-    uri         = google_cloudfunctions_function.ads_account_function.https_trigger_url
+    uri         = google_cloudfunctions_function.google_ads_accounts_function.https_trigger_url
     body        = base64encode(local.scheduler_body)
     headers     = {
       "Content-Type" = "application/json"
