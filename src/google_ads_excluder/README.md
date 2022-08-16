@@ -9,6 +9,13 @@ To run the code ensure the following environment variables are set:
 export GOOGLE_CLOUD_PROJECT=
 export APE_CONFIG_SHEET_ID=
 export APE_EXCLUSION_VALIDATE_ONLY=
+export GOOGLE_ADS_USE_PROTO_PLUS=false
+export GOOGLE_ADS_REFRESH_TOKEN=
+export GOOGLE_ADS_CLIENT_ID=
+export GOOGLE_ADS_CLIENT_SECRET=
+export GOOGLE_ADS_DEVELOPER_TOKEN=
+export GOOGLE_ADS_LOGIN_CUSTOMER_ID=
+
 ```
 
 ## Local Deployment

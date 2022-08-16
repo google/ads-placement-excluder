@@ -23,6 +23,7 @@ from typing import Any, Dict, List, Tuple
 import google.auth
 import google.auth.credentials
 from google.cloud import bigquery
+from google.cloud import pubsub_v1
 from google.cloud import translate_v2 as translate
 from googleapiclient.discovery import build
 import jsonschema
@@ -36,6 +37,8 @@ logger.setLevel(logging.INFO)
 
 # The Google Cloud project containing the BigQuery dataset
 GOOGLE_CLOUD_PROJECT = os.environ.get('GOOGLE_CLOUD_PROJECT')
+# The pub/sub topic to send the success message to
+APE_ADS_EXCLUDER_PUBSUB_TOPIC = os.environ.get('APE_ADS_EXCLUDER_PUBSUB_TOPIC')
 
 # The schema of the JSON in the event payload
 message_schema = {
@@ -88,6 +91,7 @@ def run(customer_id: str) -> None:
         get_youtube_dataframe(channel_ids, credentials)
     else:
         logger.info('No channel IDs to process')
+    send_messages_to_pubsub(customer_id)
     logger.info('Done')
 
 
@@ -286,3 +290,29 @@ def write_results_to_bigquery(youtube_df: pd.DataFrame) -> None:
         project_id=GOOGLE_CLOUD_PROJECT,
         if_exists='append',
     )
+
+
+def send_messages_to_pubsub(customer_id: str) -> None:
+    """Push the customer ID to pub/sub when the job completes.
+
+    Args:
+        customer_id: the customer ID to fetch the Google Ads data for.
+    """
+    logger.info('Sending message to pub/sub for customer_id: %s', customer_id)
+
+    publisher = pubsub_v1.PublisherClient()
+
+    # The `topic_path` method creates a fully qualified identifier
+    # in the form `projects/{project_id}/topics/{topic_id}`
+    logger.info('Publishing to topic: %s', APE_ADS_EXCLUDER_PUBSUB_TOPIC)
+    topic_path = publisher.topic_path(
+        GOOGLE_CLOUD_PROJECT, APE_ADS_EXCLUDER_PUBSUB_TOPIC)
+    logger.info('Full topic path: %s', topic_path)
+
+    message_str = json.dumps({'customer_id': customer_id})
+    logger.info('Sending message: %s', message_str)
+    # Data must be a bytestring
+    data = message_str.encode("utf-8")
+    publisher.publish(topic_path, data)
+
+    logger.info('Message published')

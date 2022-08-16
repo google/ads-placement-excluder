@@ -6,3 +6,4 @@ google-cloud-bigquery==3.3.0
 google-cloud-pubsub==2.13.4
 jsonschema==4.9.1
 pandas==1.4.3
+pandas-gbq==0.17.8

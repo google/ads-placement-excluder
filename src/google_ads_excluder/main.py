@@ -18,7 +18,7 @@ import logging
 import os
 import sys
 from datetime import datetime
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Union
 
 import google.auth
 import google.auth.credentials
@@ -44,7 +44,10 @@ SHEET_ID = os.environ.get('APE_CONFIG_SHEET_ID')
 VALIDATE_ONLY = os.environ.get(
     'APE_EXCLUSION_VALIDATE_ONLY', 'False').lower() in ('true', '1', 't')
 # The access scopes used in this function
-SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
+SCOPES = [
+    'https://www.googleapis.com/auth/spreadsheets.readonly',
+    'https://www.googleapis.com/auth/cloud-platform',
+]
 # The schema of the JSON in the event payload
 message_schema = {
     'type': 'object',
@@ -95,8 +98,9 @@ def run(customer_id: str) -> None:
     filters = get_config_filters(credentials)
 
     placements = get_spam_placements(customer_id, filters, credentials)
-    exclude_placements_in_gads(placements, credentials)
-    write_exclusions_to_bigquery(customer_id, placements)
+    if placements is not None:
+        exclude_placements_in_gads(placements, credentials)
+        write_exclusions_to_bigquery(customer_id, placements)
     logger.info('Job complete')
 
 
@@ -177,7 +181,7 @@ def youtube_filters_to_sql_string(config_filters: List[List[str]]) -> str:
 def get_spam_placements(customer_id: str,
                         filters: str,
                         credentials: google.auth.credentials.Credentials
-                        ) -> List[str]:
+                        ) -> Union[List[str], None]:
     """Run a query to find spam placements in BigQuery and return as a list.
 
     Args:
@@ -224,7 +228,7 @@ def get_spam_placements(customer_id: str,
 
     if rows.total_rows == 0:
         logger.info('There is nothing to update')
-        exit()
+        return None
     channel_ids = []
     for row in rows:
         channel_ids.append(row.placement)

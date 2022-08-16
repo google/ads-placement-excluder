@@ -94,8 +94,13 @@ data "archive_file" "google_ads_report_zip" {
 }
 data "archive_file" "youtube_channel_zip" {
   type        = "zip"
-  output_path = ".temp/ads_account_code_source.zip"
+  output_path = ".temp/youtube_channel_source.zip"
   source_dir  = "../src/youtube_channel/"
+}
+data "archive_file" "google_ads_excluder_zip" {
+  type        = "zip"
+  output_path = ".temp/google_ads_excluder_source.zip"
+  source_dir  = "../src/google_ads_excluder/"
 }
 
 resource "google_storage_bucket_object" "google_ads_accounts" {
@@ -115,6 +120,12 @@ resource "google_storage_bucket_object" "youtube_channel" {
   bucket     = google_storage_bucket.function_bucket.name
   source     = data.archive_file.youtube_channel_zip.output_path
   depends_on = [data.archive_file.youtube_channel_zip]
+}
+resource "google_storage_bucket_object" "google_ads_excluder" {
+  name       = "google_ads_excluder_${data.archive_file.google_ads_excluder_zip.output_md5}.zip"
+  bucket     = google_storage_bucket.function_bucket.name
+  source     = data.archive_file.google_ads_excluder_zip.output_path
+  depends_on = [data.archive_file.google_ads_excluder_zip]
 }
 
 resource "google_cloudfunctions_function" "google_ads_accounts_function" {
@@ -181,7 +192,36 @@ resource "google_cloudfunctions_function" "youtube_channel_function" {
   }
 
   environment_variables = {
-    GOOGLE_CLOUD_PROJECT = var.project_id
+    GOOGLE_CLOUD_PROJECT          = var.project_id
+    APE_ADS_EXCLUDER_PUBSUB_TOPIC = google_pubsub_topic.google_ads_excluder_pubsub_topic.name
+  }
+}
+resource "google_cloudfunctions_function" "google_ads_excluder_function" {
+  region                = var.region
+  name                  = "ape-google_ads_excluder"
+  description           = "Exclude the channels in Google Ads"
+  runtime               = "python310"
+  source_archive_bucket = google_storage_bucket.function_bucket.name
+  source_archive_object = google_storage_bucket_object.google_ads_excluder.name
+  service_account_email = google_service_account.service_account.email
+  timeout               = 540
+  available_memory_mb   = 1024
+  entry_point           = "main"
+
+  event_trigger {
+    event_type     = "providers/cloud.pubsub/eventTypes/topic.publish"
+    resource       = google_pubsub_topic.google_ads_excluder_pubsub_topic.name
+  }
+
+  environment_variables = {
+    GOOGLE_CLOUD_PROJECT         = var.project_id
+    APE_CONFIG_SHEET_ID          = var.config_sheet_id
+    GOOGLE_ADS_USE_PROTO_PLUS    = false
+    GOOGLE_ADS_REFRESH_TOKEN     = var.oauth_refresh_token
+    GOOGLE_ADS_CLIENT_ID         = var.google_cloud_client_id
+    GOOGLE_ADS_CLIENT_SECRET     = var.google_cloud_client_secret
+    GOOGLE_ADS_DEVELOPER_TOKEN   = var.google_ads_developer_token
+    GOOGLE_ADS_LOGIN_CUSTOMER_ID = var.google_ads_login_customer_id
   }
 }
 
@@ -200,6 +240,10 @@ resource "google_pubsub_topic" "google_ads_report_pubsub_topic" {
 }
 resource "google_pubsub_topic" "youtube_pubsub_topic" {
   name                       = "ape-youtube-channel-topic"
+  message_retention_duration = "604800s"
+}
+resource "google_pubsub_topic" "google_ads_excluder_pubsub_topic" {
+  name                       = "ape-google-ads-excluder-topic"
   message_retention_duration = "604800s"
 }
 
