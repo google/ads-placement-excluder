@@ -37,8 +37,12 @@ logger.setLevel(logging.INFO)
 
 # The Google Cloud project containing the BigQuery dataset
 GOOGLE_CLOUD_PROJECT = os.environ.get('GOOGLE_CLOUD_PROJECT')
+
 # The pub/sub topic to send the success message to
 APE_ADS_EXCLUDER_PUBSUB_TOPIC = os.environ.get('APE_ADS_EXCLUDER_PUBSUB_TOPIC')
+SHEET_ID = os.environ.get('APE_CONFIG_SHEET_ID')
+# The access scopes used in this function
+SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
 
 # The schema of the JSON in the event payload
 message_schema = {
@@ -172,6 +176,7 @@ def get_youtube_dataframe(
 
     logger.info('Connecting to the youtube API')
     youtube = build('youtube', 'v3', credentials=credentials)
+    is_translated = get_translate_filter(credentials)
 
     for i, chunk in enumerate(chunks):
         logger.info(f'Processing chunk {i + 1} of {number_of_chunks}')
@@ -181,7 +186,7 @@ def get_youtube_dataframe(
             id=chunk_list,
             maxResults=chunk_size)
         response = request.execute()
-        channels = process_youtube_response(response, chunk_list)
+        channels = process_youtube_response(response, chunk_list, is_translated)
         youtube_df = pd.DataFrame(channels, columns=[
             'placement',
             'viewCount',
@@ -227,6 +232,7 @@ def split_list_to_chunks(
 def process_youtube_response(
         response: Dict[str, Any],
         channel_ids: List[str],
+        is_translated: bool,
 ) -> List[List[Any]]:
     """Process the YouTube response to extract the required information.
 
@@ -234,6 +240,7 @@ def process_youtube_response(
         response: The YouTube channels list response
             https://developers.google.com/youtube/v3/docs/channels/list#response
         channel_ids: A list of the channel IDs passed in the request
+        is_translated: A flag showing whether YouTube channel title should be translated or not
 
     Returns:
         A list of dicts where each dict represents data from one channel
@@ -244,9 +251,14 @@ def process_youtube_response(
         logger.warning('The YouTube response has no results: %s', response)
         logger.warning(channel_ids)
         return data
+
     for channel in response['items']:
         title = channel.get('snippet').get('title', '')
-        title_language, confidence = detect_language(title)
+        if is_translated:
+            title_language, confidence = detect_language(title)
+        else:
+            title_language = ''
+            confidence = 0
         data.append([
             channel.get('id'),
             channel.get('statistics').get('viewCount', None),
@@ -260,6 +272,28 @@ def process_youtube_response(
             channel.get('brandingSettings').get('defaultLanguage', ''),
         ])
     return data
+
+def get_translate_filter(credentials: google.auth.credentials.Credentials) -> bool:
+    """Get the filter for YouTube channel title translation.
+    Args:
+        credentials: Google Auth credentials
+
+    Returns:
+        True if filter is enabled, False otherwise
+    """
+    logger.info('Getting config from sheet %s', SHEET_ID)
+
+    sheets_service = build('sheets', 'v4', credentials=credentials)
+    sheet = sheets_service.spreadsheets()
+
+    result = sheet.values().get(
+        spreadsheetId=SHEET_ID,
+        range='yt_translation_filter').execute().get('values', [['Disabled']])[0][0]
+
+    is_enabled = True if result == 'Enabled' else False
+    logger.info('Translation filter enabled is %s', is_enabled)
+
+    return is_enabled
 
 
 def detect_language(text: str) -> Tuple[str, float]:
