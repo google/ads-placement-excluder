@@ -23,9 +23,11 @@ from typing import Any, Dict, List
 import google.auth
 import google.auth.credentials
 from googleapiclient.discovery import build
+from google.ads.googleads.client import GoogleAdsClient
 from google.cloud import bigquery
 import jsonschema
 import pandas as pd
+
 
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger(__name__)
@@ -35,6 +37,12 @@ logger.setLevel(logging.INFO)
 GOOGLE_CLOUD_PROJECT = os.environ.get('GOOGLE_CLOUD_PROJECT')
 # The ID of the Google Sheet containing the config
 SHEET_ID = os.environ.get('APE_CONFIG_SHEET_ID')
+# Set False to apply the exclusions in Google Ads. If True, the call will be
+# made to the API and validated, but the exclusion won't be applied and you
+# won't see it in the UI. You probably want this to be True in a dev environment
+# and False in prod.
+VALIDATE_ONLY = os.environ.get(
+    'APE_EXCLUSION_VALIDATE_ONLY', 'False').lower() in ('true', '1', 't')
 # The access scopes used in this function
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
 # The schema of the JSON in the event payload
@@ -87,7 +95,7 @@ def run(customer_id: str) -> None:
     filters = get_config_filters(credentials)
 
     placements = get_spam_placements(customer_id, filters, credentials)
-    exclude_placements_in_gads(customer_id, placements)
+    exclude_placements_in_gads(placements, credentials)
     write_exclusions_to_bigquery(customer_id, placements)
     logger.info('Job complete')
 
@@ -110,12 +118,8 @@ def get_config_filters(credentials: google.auth.credentials.Credentials) -> str:
     """
     logger.info('Getting config from sheet %s', SHEET_ID)
 
-    sheets_service = build('sheets', 'v4', credentials=credentials)
-    sheet = sheets_service.spreadsheets()
-
-    result = sheet.values().get(
-        spreadsheetId=SHEET_ID,
-        range='yt_exclusion_filters').execute().get('values', [])
+    result = get_range_values_from_sheet(
+        SHEET_ID, 'yt_exclusion_filters', credentials)
 
     logger.info('Returned %i rows', len(result))
     filters = youtube_filters_to_sql_string(result)
@@ -123,6 +127,29 @@ def get_config_filters(credentials: google.auth.credentials.Credentials) -> str:
         raise google.api_core.exceptions.BadRequest("Filters are not set")
 
     return filters
+
+
+def get_range_values_from_sheet(
+        sheet_id: str,
+        sheet_range: str,
+        credentials: google.auth.credentials.Credentials
+) -> List[List[str]]:
+    """Get the values from a named range in the Google Sheet.
+
+    Args:
+        sheet_id: the Google Sheet ID to fetch data from.
+        sheet_range: the range in the Google Sheet to get the values from
+        credentials: Google Auth credentials
+
+    Returns:
+        Each row in the response represents a row in the Sheet.
+    """
+    logger.info(f'Getting range "{sheet_range}" from sheet: {sheet_id}')
+    sheets_service = build('sheets', 'v4', credentials=credentials)
+    sheet = sheets_service.spreadsheets()
+    return sheet.values().get(
+        spreadsheetId=sheet_id,
+        range=sheet_range).execute().get('values', [])
 
 
 def youtube_filters_to_sql_string(config_filters: List[List[str]]) -> str:
@@ -175,7 +202,7 @@ def get_spam_placements(customer_id: str,
             FROM
               `ads_placement_excluder.*`
             WHERE
-              _TABLE_SUFFIX = 'excluded_channels' 
+              _TABLE_SUFFIX = 'excluded_channels'
               AND customer_id={customer_id}
           )
           SELECT DISTINCT
@@ -183,16 +210,15 @@ def get_spam_placements(customer_id: str,
           FROM
             `ads_placement_excluder.google_ads_placement_report_{customer_id}` AS Ads
           LEFT JOIN
-            ads_placement_excluder.youtube_channels AS Yt 
+            ads_placement_excluder.youtube_channels AS Yt
             USING(placement)
           LEFT JOIN
-             Excluded 
+             Excluded
              USING(placement)
           WHERE Excluded.datetime_updated IS NULL
-             AND {filters}    
+             AND {filters}
         """
     logger.info('Running query: %s', query)
-
 
     rows = client.query(query).result()
 
@@ -206,18 +232,58 @@ def get_spam_placements(customer_id: str,
     return channel_ids
 
 
-def exclude_placements_in_gads(customer_id: str, placements: List[str]) -> None:
+def exclude_placements_in_gads(
+        placements: List[str],
+        credentials: google.auth.credentials.Credentials = None
+) -> None:
     """Exclude the placements in the Google Ads account.
 
     Args:
-        customer_id: the Google Ads customer ID to process.
         placements: alist of placement IDs which should be excluded.
+        credentials: Google Auth credentials
     """
     logger.info('Excluding placements in Google Ads.')
-    # client = GoogleAdsClient.load_from_env(version='v11')
-    # ga_service = client.get_service("GoogleAdsService")
 
-    # Exclude placements
+    if credentials is None:
+        logger.info('No auth credentials provided. Fetching them.')
+        credentials = get_auth_credentials()
+
+    shared_set_id = get_range_values_from_sheet(
+        sheet_id=SHEET_ID,
+        sheet_range='placement_exclusion_list_id',
+        credentials=credentials)[0][0]
+    customer_id = get_range_values_from_sheet(
+        sheet_id=SHEET_ID,
+        sheet_range='placement_exclusion_customer_id',
+        credentials=credentials)[0][0]
+
+    client = GoogleAdsClient.load_from_env(version='v11')
+    service = client.get_service('SharedCriterionService')
+
+    shared_set = f'customers/{customer_id}/sharedSets/{shared_set_id}'
+
+    operations = []
+    logger.info('Processing the %i placements', len(placements))
+    for placement in placements:
+        operation = client.get_type('SharedCriterionOperation')
+        criterion = operation.create
+        criterion.shared_set = shared_set
+        criterion.youtube_channel.channel_id = placement
+        operations.append(operation)
+
+    placements_len = len(placements)
+    logger.info('There are %i operations to upload', placements_len)
+    logger.info('Validate_only mode: %s', VALIDATE_ONLY)
+    if placements_len > 0:
+        response = service.mutate_shared_criteria(
+            request={
+                'validate_only': VALIDATE_ONLY,
+                'customer_id': customer_id,
+                'operations': operations
+            }
+        )
+        logger.info('Response from the upload:')
+        logger.info(response)
 
     logger.info('Done.')
 

@@ -8,6 +8,7 @@ To run the code ensure the following environment variables are set:
 ```
 export GOOGLE_CLOUD_PROJECT=
 export APE_CONFIG_SHEET_ID=
+export APE_EXCLUSION_VALIDATE_ONLY=
 ```
 
 ## Local Deployment
