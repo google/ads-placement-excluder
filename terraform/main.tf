@@ -255,9 +255,9 @@ locals {
     EOF
 }
 resource "google_cloud_scheduler_job" "gads_reporting_scheduler" {
-  name             = "google_ads_reporting_to_bigquery"
+  name             = "ads_placement_excluder"
   description      = "Run the export from Google Ads to BigQuery"
-  schedule         = "0 8,12,16 * * *"
+  schedule         = "0 * * * *"
   time_zone        = "Etc/UTC"
   attempt_deadline = "320s"
   region           = var.region
