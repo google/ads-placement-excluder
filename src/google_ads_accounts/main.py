@@ -101,6 +101,7 @@ def get_config_from_sheet(sheet_id: str) -> List[Dict[str, Any]]:
 
         [
             {
+                'sheet_id': 'abcdefghijklmnop-mk',
                 'customer_id': '1234567890'
                 'lookback_days': 90,
                 'gads_filters': 'metrics.clicks > 10',
@@ -131,6 +132,7 @@ def get_config_from_sheet(sheet_id: str) -> List[Dict[str, Any]]:
     for customer_id, is_enabled in customer_ids:
         if is_enabled == 'Enabled':
             account_configs.append({
+                'sheet_id': sheet_id,
                 'customer_id': customer_id,
                 'lookback_days': int(lookback_days),
                 'gads_filters': gads_filters_str,

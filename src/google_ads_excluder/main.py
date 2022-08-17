@@ -35,8 +35,6 @@ logger.setLevel(logging.INFO)
 
 # The Google Cloud project containing the BigQuery dataset
 GOOGLE_CLOUD_PROJECT = os.environ.get('GOOGLE_CLOUD_PROJECT')
-# The ID of the Google Sheet containing the config
-SHEET_ID = os.environ.get('APE_CONFIG_SHEET_ID')
 # Set False to apply the exclusions in Google Ads. If True, the call will be
 # made to the API and validated, but the exclusion won't be applied and you
 # won't see it in the UI. You probably want this to be True in a dev environment
@@ -52,6 +50,7 @@ SCOPES = [
 message_schema = {
     'type': 'object',
     'properties': {
+        'sheet_id': {'type': 'string'},
         'customer_id': {'type': 'string'},
     },
     'required': ['customer_id', ]
@@ -82,24 +81,25 @@ def main(event: Dict[str, Any], context: Dict[str, Any]) -> None:
     # Will raise jsonschema.exceptions.ValidationError if the schema is invalid
     jsonschema.validate(instance=message_json, schema=message_schema)
 
-    run(message_json.get('customer_id'))
+    run(message_json.get('customer_id'), message_json.get('sheet_id'))
 
     logger.info('Done')
 
 
-def run(customer_id: str) -> None:
+def run(customer_id: str, sheet_id: str) -> None:
     """Start the job to run the report from Google Ads & output it.
 
     Args:
         customer_id: the Google Ads customer ID to process.
+        sheet_id: the ID of the Google Sheet containing the config.
     """
     logger.info('Starting job to fetch data for %s', customer_id)
     credentials = get_auth_credentials()
-    filters = get_config_filters(credentials)
+    filters = get_config_filters(sheet_id, credentials)
 
     placements = get_spam_placements(customer_id, filters, credentials)
     if placements is not None:
-        exclude_placements_in_gads(placements, credentials)
+        exclude_placements_in_gads(placements, sheet_id, credentials)
         write_exclusions_to_bigquery(customer_id, placements)
     logger.info('Job complete')
 
@@ -110,20 +110,22 @@ def get_auth_credentials() -> google.auth.credentials.Credentials:
     return credentials
 
 
-def get_config_filters(credentials: google.auth.credentials.Credentials) -> str:
+def get_config_filters(sheet_id: str,
+                       credentials: google.auth.credentials.Credentials) -> str:
     """Get the filters for identifying a spam placement from the config.
 
     Args:
+        sheet_id: the ID of the Google Sheet containing the config.
         credentials: Google Auth credentials
 
     Returns:
         SQL WHERE conditions for that can be run on BigQuery, e.g.
         viewCount > 1000000 AND subscriberCount > 100000
     """
-    logger.info('Getting config from sheet %s', SHEET_ID)
+    logger.info('Getting config from sheet %s', sheet_id)
 
     result = get_range_values_from_sheet(
-        SHEET_ID, 'yt_exclusion_filters', credentials)
+        sheet_id, 'yt_exclusion_filters', credentials)
 
     logger.info('Returned %i rows', len(result))
     filters = youtube_filters_to_sql_string(result)
@@ -238,12 +240,14 @@ def get_spam_placements(customer_id: str,
 
 def exclude_placements_in_gads(
         placements: List[str],
+        sheet_id: str,
         credentials: google.auth.credentials.Credentials = None
 ) -> None:
     """Exclude the placements in the Google Ads account.
 
     Args:
         placements: alist of placement IDs which should be excluded.
+        sheet_id: the ID of the Google Sheet containing the config.
         credentials: Google Auth credentials
     """
     logger.info('Excluding placements in Google Ads.')
@@ -253,11 +257,11 @@ def exclude_placements_in_gads(
         credentials = get_auth_credentials()
 
     shared_set_id = get_range_values_from_sheet(
-        sheet_id=SHEET_ID,
+        sheet_id=sheet_id,
         sheet_range='placement_exclusion_list_id',
         credentials=credentials)[0][0]
     customer_id = get_range_values_from_sheet(
-        sheet_id=SHEET_ID,
+        sheet_id=sheet_id,
         sheet_range='placement_exclusion_customer_id',
         credentials=credentials)[0][0]
 

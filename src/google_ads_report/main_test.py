@@ -39,6 +39,7 @@ class MainTestCase(unittest.TestCase):
         mock_start_job.assert_not_called()
 
         event = self._create_event({
+            'sheet_id': 'abcdefghijklmnop-mk',
             'customer_id': '123',
             'lookback_days': 90,
             'gads_filters': 'metrics.clicks > 10',

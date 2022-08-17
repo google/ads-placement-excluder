@@ -215,7 +215,6 @@ resource "google_cloudfunctions_function" "google_ads_excluder_function" {
 
   environment_variables = {
     GOOGLE_CLOUD_PROJECT         = var.project_id
-    APE_CONFIG_SHEET_ID          = var.config_sheet_id
     GOOGLE_ADS_USE_PROTO_PLUS    = false
     GOOGLE_ADS_REFRESH_TOKEN     = var.oauth_refresh_token
     GOOGLE_ADS_CLIENT_ID         = var.google_cloud_client_id

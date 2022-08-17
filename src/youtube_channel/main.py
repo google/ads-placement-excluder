@@ -44,6 +44,7 @@ APE_ADS_EXCLUDER_PUBSUB_TOPIC = os.environ.get('APE_ADS_EXCLUDER_PUBSUB_TOPIC')
 message_schema = {
     'type': 'object',
     'properties': {
+        'sheet_id': {'type': 'string'},
         'customer_id': {'type': 'string'},
     },
     'required': ['customer_id', ]
@@ -74,16 +75,17 @@ def main(event: Dict[str, Any], context: Dict[str, Any]) -> None:
     # Will raise jsonschema.exceptions.ValidationError if the schema is invalid
     jsonschema.validate(instance=message_json, schema=message_schema)
 
-    run(message_json.get('customer_id'))
+    run(message_json.get('customer_id'), message_json.get('sheet_id'))
 
     logger.info('Done')
 
 
-def run(customer_id: str) -> None:
+def run(customer_id: str, sheet_id: str) -> None:
     """Orchestration to pull YouTube data and output it to BigQuery.
 
     Args:
         customer_id: the Google Ads customer ID to process.
+        sheet_id: the ID of the Google Sheet containing the config.
     """
     credentials = get_auth_credentials()
     channel_ids = get_placements_query(customer_id, credentials)
@@ -91,7 +93,7 @@ def run(customer_id: str) -> None:
         get_youtube_dataframe(channel_ids, credentials)
     else:
         logger.info('No channel IDs to process')
-    send_messages_to_pubsub(customer_id)
+    send_messages_to_pubsub(customer_id, sheet_id)
     logger.info('Done')
 
 
@@ -292,11 +294,12 @@ def write_results_to_bigquery(youtube_df: pd.DataFrame) -> None:
     )
 
 
-def send_messages_to_pubsub(customer_id: str) -> None:
+def send_messages_to_pubsub(customer_id: str, sheet_id: str) -> None:
     """Push the customer ID to pub/sub when the job completes.
 
     Args:
         customer_id: the customer ID to fetch the Google Ads data for.
+        sheet_id: the ID of the Google Sheet containing the config.
     """
     logger.info('Sending message to pub/sub for customer_id: %s', customer_id)
 
@@ -309,7 +312,10 @@ def send_messages_to_pubsub(customer_id: str) -> None:
         GOOGLE_CLOUD_PROJECT, APE_ADS_EXCLUDER_PUBSUB_TOPIC)
     logger.info('Full topic path: %s', topic_path)
 
-    message_str = json.dumps({'customer_id': customer_id})
+    message_str = json.dumps({
+        'customer_id': customer_id,
+        'sheet_id': sheet_id,
+    })
     logger.info('Sending message: %s', message_str)
     # Data must be a bytestring
     data = message_str.encode("utf-8")

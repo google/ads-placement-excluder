@@ -38,6 +38,7 @@ APE_YOUTUBE_PUBSUB_TOPIC = os.environ.get('APE_YOUTUBE_PUBSUB_TOPIC')
 message_schema = {
     'type': 'object',
     'properties': {
+        'sheet_id': {'type': 'string'},
         'customer_id': {'type': 'string'},
         'lookback_days': {'type': 'number'},
         'gads_filters': {'type': 'string'},
@@ -67,6 +68,7 @@ def main(event: Dict[str, Any], context: Dict[str, Any]) -> None:
     jsonschema.validate(instance=message_json, schema=message_schema)
 
     start_job(
+        message_json.get('sheet_id'),
         message_json.get('customer_id'),
         message_json.get('lookback_days'),
         message_json.get('gads_filters'),
@@ -75,10 +77,16 @@ def main(event: Dict[str, Any], context: Dict[str, Any]) -> None:
     logger.info('Done')
 
 
-def start_job(customer_id: str, lookback_days: int, gads_filters: str) -> None:
+def start_job(
+        sheet_id: str,
+        customer_id: str,
+        lookback_days: int,
+        gads_filters: str,
+) -> None:
     """Start the job to run the report from Google Ads & output it.
 
     Args:
+        sheet_id: the ID of the Google Sheet containing the config.
         customer_id: the customer ID to fetch the Google Ads data for.
         lookback_days: the number of days from today to look back when fetching
             the report.
@@ -87,7 +95,7 @@ def start_job(customer_id: str, lookback_days: int, gads_filters: str) -> None:
     logger.info('Starting job to fetch data for %s', customer_id)
     report_df = get_report_df(customer_id, lookback_days, gads_filters)
     write_results_to_bigquery(report_df, customer_id)
-    send_messages_to_pubsub(customer_id)
+    send_messages_to_pubsub(customer_id, sheet_id)
     logger.info('Job complete')
 
 
@@ -244,11 +252,12 @@ def write_results_to_bigquery(report_df: pd.DataFrame,
     )
 
 
-def send_messages_to_pubsub(customer_id: str) -> None:
+def send_messages_to_pubsub(customer_id: str, sheet_id: str) -> None:
     """Push the customer ID to pub/sub when the job completes.
 
     Args:
         customer_id: the customer ID to fetch the Google Ads data for.
+        sheet_id: the ID of the Google Sheet containing the config.
     """
     logger.info('Sending message to pub/sub for customer_id: %s', customer_id)
 
@@ -261,7 +270,10 @@ def send_messages_to_pubsub(customer_id: str) -> None:
         GOOGLE_CLOUD_PROJECT, APE_YOUTUBE_PUBSUB_TOPIC)
     logger.info('Full topic path: %s', topic_path)
 
-    message_str = json.dumps({'customer_id': customer_id})
+    message_str = json.dumps({
+        'customer_id': customer_id,
+        'sheet_id': sheet_id,
+    })
     logger.info('Sending message: %s', message_str)
     # Data must be a bytestring
     data = message_str.encode("utf-8")

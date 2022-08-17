@@ -51,5 +51,5 @@ You can then make a post request by running the following:
 curl localhost:8080 \
   -X POST \
   -H "Content-Type: application/json" \
-  -d "{ \"data\": { \"data\": \"$(echo '{ "customer_id": "1234567890" }' | base64)\" }}"
+  -d "{ \"data\": { \"data\": \"$(echo '{ "customer_id": "1234567890", "sheet_id": "abcdefghijklmnop-mk" }' | base64)\" }}"
 ```
