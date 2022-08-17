@@ -121,7 +121,8 @@ def get_config_from_sheet(sheet_id: str) -> List[Dict[str, Any]]:
         range='google_ads_filters').execute().get('values', [])
     lookback_days = sheet.values().get(
         spreadsheetId=sheet_id,
-        range='google_ads_lookback_days').execute().get('value', '30')
+        range='google_ads_lookback_days').execute().get('values',
+                                                        [['30']])[0][0]
 
     gads_filters_str = gads_filters_to_gaql_string(gads_filters)
 
