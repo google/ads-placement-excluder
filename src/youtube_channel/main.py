@@ -40,7 +40,7 @@ GOOGLE_CLOUD_PROJECT = os.environ.get('GOOGLE_CLOUD_PROJECT')
 
 # The pub/sub topic to send the success message to
 APE_ADS_EXCLUDER_PUBSUB_TOPIC = os.environ.get('APE_ADS_EXCLUDER_PUBSUB_TOPIC')
-SHEET_ID = os.environ.get('APE_CONFIG_SHEET_ID')
+
 # The access scopes used in this function
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
 
@@ -94,7 +94,7 @@ def run(customer_id: str, sheet_id: str) -> None:
     credentials = get_auth_credentials()
     channel_ids = get_placements_query(customer_id, credentials)
     if len(channel_ids) > 0:
-        get_youtube_dataframe(channel_ids, credentials)
+        get_youtube_dataframe(channel_ids, sheet_id, credentials)
     else:
         logger.info('No channel IDs to process')
     send_messages_to_pubsub(customer_id, sheet_id)
@@ -154,6 +154,7 @@ def get_placements_query(
 
 def get_youtube_dataframe(
         channel_ids: List[str],
+        sheet_id: str,
         credentials: google.auth.credentials.Credentials
 ) -> None:
     """Pull information on each of the channels provide from the YouTube API.
@@ -165,6 +166,7 @@ def get_youtube_dataframe(
 
     Args:
         channel_ids: the channel IDs to pull the info on from YouTube
+        sheet_id: the ID of the Google Sheet containing the config.
         credentials: Google Auth credentials
     """
     logger.info('Getting YouTube data for channel IDs')
@@ -176,7 +178,7 @@ def get_youtube_dataframe(
 
     logger.info('Connecting to the youtube API')
     youtube = build('youtube', 'v3', credentials=credentials)
-    is_translated = get_translate_filter(credentials)
+    is_translated = get_translate_filter(sheet_id, credentials)
 
     for i, chunk in enumerate(chunks):
         logger.info(f'Processing chunk {i + 1} of {number_of_chunks}')
@@ -273,21 +275,27 @@ def process_youtube_response(
         ])
     return data
 
-def get_translate_filter(credentials: google.auth.credentials.Credentials) -> bool:
+
+def get_translate_filter(
+        sheet_id: str,
+        credentials: google.auth.credentials.Credentials
+) -> bool:
     """Get the filter for YouTube channel title translation.
+
     Args:
+        sheet_id: the ID of the Google Sheet containing the config.
         credentials: Google Auth credentials
 
     Returns:
         True if filter is enabled, False otherwise
     """
-    logger.info('Getting config from sheet %s', SHEET_ID)
+    logger.info('Getting config from sheet %s', sheet_id)
 
     sheets_service = build('sheets', 'v4', credentials=credentials)
     sheet = sheets_service.spreadsheets()
 
     result = sheet.values().get(
-        spreadsheetId=SHEET_ID,
+        spreadsheetId=sheet_id,
         range='yt_translation_filter').execute().get('values', [['Disabled']])[0][0]
 
     is_enabled = True if result == 'Enabled' else False

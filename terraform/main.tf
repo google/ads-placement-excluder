@@ -3,41 +3,6 @@ provider "google" {
   region  = var.region
 }
 
-# APIS -------------------------------------------------------------------------
-resource "google_project_service" "iam_api" {
-  service = "iam.googleapis.com"
-}
-resource "google_project_service" "cloudresourcemanager_api" {
-  service = "cloudresourcemanager.googleapis.com"
-}
-resource "google_project_service" "serviceusage_api" {
-  service = "serviceusage.googleapis.com"
-}
-resource "google_project_service" "bigquery_api" {
-  service = "bigquery.googleapis.com"
-}
-resource "google_project_service" "googleads_api" {
-  service = "googleads.googleapis.com"
-}
-resource "google_project_service" "youtube_api" {
-  service = "youtube.googleapis.com"
-}
-resource "google_project_service" "cloudfunctions_api" {
-  service = "cloudfunctions.googleapis.com"
-}
-resource "google_project_service" "cloudbuild_api" {
-  service = "cloudbuild.googleapis.com"
-}
-resource "google_project_service" "sheets_api" {
-  service = "sheets.googleapis.com"
-}
-resource "google_project_service" "cloudscheduler_api" {
-  service = "cloudscheduler.googleapis.com"
-}
-resource "google_project_service" "translate_api" {
-  service = "translate.googleapis.com"
-}
-
 # SERVICE ACCOUNT --------------------------------------------------------------
 resource "google_service_account" "service_account" {
   account_id   = "ads-placement-excluder-runner"
@@ -176,7 +141,7 @@ resource "google_cloudfunctions_function" "google_ads_report_function" {
 }
 resource "google_cloudfunctions_function" "youtube_channel_function" {
   region                = var.region
-  name                  = "ape-youtube_channel"
+  name                  = "ape-youtube_channels"
   description           = "Pull the channel data from the YouTube API."
   runtime               = "python310"
   source_archive_bucket = google_storage_bucket.function_bucket.name

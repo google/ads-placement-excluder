@@ -19,6 +19,12 @@ TODO: write me.
 
 ## Deployment
 
+TODO: explain
+https://medium.com/rockedscience/how-to-fully-automate-the-deployment-of-google-cloud-platform-projects-with-terraform-16c33f1fb31f
+```
+gcloud services enable serviceusage.googleapis.com cloudresourcemanager.googleapis.com iam.googleapis.com cloudresourcemanager.googleapis.com serviceusage.googleapis.com bigquery.googleapis.com googleads.googleapis.com youtube.googleapis.com cloudfunctions.googleapis.com cloudbuild.googleapis.com sheets.googleapis.com cloudscheduler.googleapis.com translate.googleapis.com
+```
+
 The deployment is managed by Terraform, so installation is required before
 following these steps ([instructions](https://learn.hashicorp.com/tutorials/terraform/install-cli)).
 
