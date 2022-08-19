@@ -8,29 +8,29 @@ resource "google_service_account" "service_account" {
   account_id   = "ads-placement-excluder-runner"
   display_name = "Service Account for running Ads Placement Excluder"
 }
-resource "google_project_iam_member" "sa_cf_role" {
+resource "google_project_iam_member" "cloud_functions_invoker_role" {
   project = var.project_id
   role    = "roles/cloudfunctions.invoker"
   member  = "serviceAccount:${google_service_account.service_account.email}"
 }
-resource "google_project_iam_member" "sa_bq_role" {
+resource "google_project_iam_member" "bigquery_job_user_role" {
   project = var.project_id
-  role    = "roles/bigquery.admin"
+  role    = "roles/bigquery.jobUser"
   member  = "serviceAccount:${google_service_account.service_account.email}"
 }
-resource "google_project_iam_member" "sa_ps_role" {
+resource "google_project_iam_member" "bigquery_data_viewer_role" {
+  project = var.project_id
+  role    = "roles/bigquery.dataViewer"
+  member  = "serviceAccount:${google_service_account.service_account.email}"
+}
+resource "google_project_iam_member" "pubsub_publisher_role" {
   project = var.project_id
   role    = "roles/pubsub.publisher"
   member  = "serviceAccount:${google_service_account.service_account.email}"
 }
-resource "google_project_iam_member" "sa_sa_role" {
+resource "google_project_iam_member" "storage_object_admin_role" {
   project = var.project_id
-  role    = "roles/iam.serviceAccountUser"
-  member  = "serviceAccount:${google_service_account.service_account.email}"
-}
-resource "google_project_iam_member" "sa_cs_role" {
-  project = var.project_id
-  role    = "roles/storage.admin"
+  role    = "roles/storage.objectAdmin"
   member  = "serviceAccount:${google_service_account.service_account.email}"
 }
 

@@ -24,6 +24,9 @@ https://www.googleapis.com/auth/cloud-platform
 https://www.googleapis.com/auth/youtube
 https://www.googleapis.com/auth/adwords
 
+## Roles
+https://cloud.google.com/iam/docs/understanding-roles
+
 ## Deployment
 
 TODO: explain
