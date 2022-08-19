@@ -7,6 +7,8 @@ To run the code ensure the following environment variables are set:
 
 ```
 export GOOGLE_CLOUD_PROJECT=
+export APE_BIGQUERY_DATASET=
+export APE_GCS_DATA_BUCKET=
 ```
 
 ## Google Translate API

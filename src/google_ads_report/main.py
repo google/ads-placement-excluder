@@ -20,17 +20,20 @@ import os
 import sys
 from typing import Any, Dict, Optional, Tuple
 from google.ads.googleads.client import GoogleAdsClient
-from google.cloud import pubsub_v1
 import jsonschema
 import pandas as pd
+from utils import gcs
+from utils import pubsub
 
 
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# The Google Cloud project containing the BigQuery dataset
+# The Google Cloud project containing the GCS bucket
 GOOGLE_CLOUD_PROJECT = os.environ.get('GOOGLE_CLOUD_PROJECT')
+# The bucket to write the data to
+APE_GCS_DATA_BUCKET = os.environ.get('APE_GCS_DATA_BUCKET')
 # The pub/sub topic to send the success message to
 APE_YOUTUBE_PUBSUB_TOPIC = os.environ.get('APE_YOUTUBE_PUBSUB_TOPIC')
 
@@ -43,7 +46,7 @@ message_schema = {
         'lookback_days': {'type': 'number'},
         'gads_filters': {'type': 'string'},
     },
-    'required': ['customer_id', 'lookback_days', 'gads_filters', ]
+    'required': ['sheet_id', 'customer_id', 'lookback_days', 'gads_filters', ]
 }
 
 
@@ -94,7 +97,7 @@ def start_job(
     """
     logger.info('Starting job to fetch data for %s', customer_id)
     report_df = get_report_df(customer_id, lookback_days, gads_filters)
-    write_results_to_bigquery(report_df, customer_id)
+    write_results_to_gcs(report_df, customer_id)
     send_messages_to_pubsub(customer_id, sheet_id)
     logger.info('Job complete')
 
@@ -150,7 +153,7 @@ def get_report_df(
     return pd.DataFrame(data, columns=[
         'datetime_updated',
         'customer_id',
-        'placement',
+        'channel_id',
         'placement_target_url',
         'impressions',
         'cost_micros',
@@ -233,23 +236,26 @@ def get_query_dates(lookback_days: int,
     )
 
 
-def write_results_to_bigquery(report_df: pd.DataFrame,
-                              customer_id: str) -> None:
-    """Write the report dataframe to BigQuery
+def write_results_to_gcs(report_df: pd.DataFrame, customer_id: str) -> None:
+    """Write the report dataframe to GCS as a CSV file
 
     Args:
         report_df: the dataframe based on the Google Ads report.
         customer_id: the customer ID to fetch the Google Ads data for.
     """
-    logger.info('Writing the results to BigQuery in: %s', GOOGLE_CLOUD_PROJECT)
-    logger.info('There are %s rows', len(report_df.index))
-    destination_table = f'ads_placement_excluder.google_ads_placement_report_{customer_id}'
-    logger.info('Destination is: %s', destination_table)
-    report_df.to_gbq(
-        destination_table=destination_table,
-        project_id=GOOGLE_CLOUD_PROJECT,
-        if_exists='replace',
-    )
+    logger.info('Writing results to GCS: %s', APE_GCS_DATA_BUCKET)
+    number_of_rows = len(report_df.index)
+    logger.info('There are %s rows', number_of_rows)
+    if number_of_rows > 0:
+        blob_name = f'google_ads_report/{customer_id}.csv'
+        logger.info('Blob name: %s', blob_name)
+        gcs.upload_blob_from_df(
+            df=report_df,
+            blob_name=blob_name,
+            bucket=APE_GCS_DATA_BUCKET)
+        logger.info('Blob uploaded to GCS')
+    else:
+        logger.info('There is nothing to write to GCS')
 
 
 def send_messages_to_pubsub(customer_id: str, sheet_id: str) -> None:
@@ -259,24 +265,13 @@ def send_messages_to_pubsub(customer_id: str, sheet_id: str) -> None:
         customer_id: the customer ID to fetch the Google Ads data for.
         sheet_id: the ID of the Google Sheet containing the config.
     """
-    logger.info('Sending message to pub/sub for customer_id: %s', customer_id)
-
-    publisher = pubsub_v1.PublisherClient()
-
-    # The `topic_path` method creates a fully qualified identifier
-    # in the form `projects/{project_id}/topics/{topic_id}`
-    logger.info('Publishing to topic: %s', APE_YOUTUBE_PUBSUB_TOPIC)
-    topic_path = publisher.topic_path(
-        GOOGLE_CLOUD_PROJECT, APE_YOUTUBE_PUBSUB_TOPIC)
-    logger.info('Full topic path: %s', topic_path)
-
-    message_str = json.dumps({
+    message_dict = {
         'customer_id': customer_id,
         'sheet_id': sheet_id,
-    })
-    logger.info('Sending message: %s', message_str)
-    # Data must be a bytestring
-    data = message_str.encode("utf-8")
-    publisher.publish(topic_path, data)
-
+    }
+    logger.info('Sending message to pub/sub:', message_dict)
+    pubsub.send_dict_to_pubsub(
+        message_dict=message_dict,
+        topic=APE_YOUTUBE_PUBSUB_TOPIC,
+        gcp_project=GOOGLE_CLOUD_PROJECT)
     logger.info('Message published')

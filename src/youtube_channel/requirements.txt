@@ -2,11 +2,10 @@ google-api-python-client==2.55.0
 google-auth==1.35.0
 google-auth-httplib2==0.1.0
 google-auth-oauthlib==0.5.2
-google-cloud-bigquery==3.3.0
-google-cloud-pubsub==2.13.4
+google-cloud-bigquery==3.3.2
+google-cloud-pubsub==2.13.6
+google-cloud-storage==2.2.1
 google-cloud-translate==2.0.1
 jsonschema==4.9.1
 numpy==1.23.1
 pandas==1.4.3
-pandas-gbq==0.17.8
-

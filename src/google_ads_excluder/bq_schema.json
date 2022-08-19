@@ -1,0 +1,20 @@
+[
+  {
+    "name": "channel_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "The YouTube Channel ID"
+  },
+  {
+    "name": "customer_id",
+    "type": "STRING",
+    "mode": "REQUIRED",
+    "description": "The Google Ads Customer ID where this placement originated"
+  },
+  {
+    "name": "datetime_updated",
+    "type": "TIMESTAMP",
+    "mode": "REQUIRED",
+    "description": "The datetime the exclusion was made"
+  }
+]

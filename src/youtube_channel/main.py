@@ -20,24 +20,29 @@ import math
 import os
 import sys
 from typing import Any, Dict, List, Tuple
+import uuid
 import google.auth
 import google.auth.credentials
 from google.cloud import bigquery
-from google.cloud import pubsub_v1
 from google.cloud import translate_v2 as translate
 from googleapiclient.discovery import build
 import jsonschema
 import pandas as pd
 import numpy as np
+from utils import gcs
+from utils import pubsub
 
 
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# The Google Cloud project containing the BigQuery dataset
+# The Google Cloud project
 GOOGLE_CLOUD_PROJECT = os.environ.get('GOOGLE_CLOUD_PROJECT')
-
+# The bucket to write the data to
+APE_GCS_DATA_BUCKET = os.environ.get('APE_GCS_DATA_BUCKET')
+# The name of the BigQuery Dataset
+BQ_DATASET = os.environ.get('APE_BIGQUERY_DATASET')
 # The pub/sub topic to send the success message to
 APE_ADS_EXCLUDER_PUBSUB_TOPIC = os.environ.get('APE_ADS_EXCLUDER_PUBSUB_TOPIC')
 
@@ -51,7 +56,7 @@ message_schema = {
         'sheet_id': {'type': 'string'},
         'customer_id': {'type': 'string'},
     },
-    'required': ['customer_id', ]
+    'required': ['sheet_id', 'customer_id', ]
 }
 
 
@@ -94,7 +99,7 @@ def run(customer_id: str, sheet_id: str) -> None:
     credentials = get_auth_credentials()
     channel_ids = get_placements_query(customer_id, credentials)
     if len(channel_ids) > 0:
-        get_youtube_dataframe(channel_ids, sheet_id, credentials)
+        get_youtube_dataframe(channel_ids, sheet_id, customer_id, credentials)
     else:
         logger.info('No channel IDs to process')
     send_messages_to_pubsub(customer_id, sheet_id)
@@ -126,28 +131,22 @@ def get_placements_query(
         project=GOOGLE_CLOUD_PROJECT, credentials=credentials)
 
     query = f"""
-      WITH YouTube AS (
-        SELECT
-          *
+        SELECT DISTINCT
+            Ads.channel_id
         FROM
-          `ads_placement_excluder.*`
+            `{BQ_DATASET}.google_ads_report` AS Ads
+        LEFT JOIN
+            `{BQ_DATASET}.youtube_channel` AS YouTube
+            USING(channel_id)
         WHERE
-          _TABLE_SUFFIX = 'youtube_channels'
-      )
-      SELECT DISTINCT
-        Ads.placement
-      FROM
-        `ads_placement_excluder.google_ads_placement_report_{customer_id}` AS Ads
-      LEFT JOIN
-        YouTube USING(placement)
-      WHERE
-        YouTube.placement IS NULL
+            Ads.customer_id = "{customer_id}"
+            AND YouTube.channel_id IS NULL
     """
     logger.info('Running query: %s', query)
     rows = client.query(query).result()
     channel_ids = []
     for row in rows:
-        channel_ids.append(row.placement)
+        channel_ids.append(row.channel_id)
     logger.info('Received %s channel_ids', len(channel_ids))
     return channel_ids
 
@@ -155,6 +154,7 @@ def get_placements_query(
 def get_youtube_dataframe(
         channel_ids: List[str],
         sheet_id: str,
+        customer_id: str,
         credentials: google.auth.credentials.Credentials
 ) -> None:
     """Pull information on each of the channels provide from the YouTube API.
@@ -167,6 +167,7 @@ def get_youtube_dataframe(
     Args:
         channel_ids: the channel IDs to pull the info on from YouTube
         sheet_id: the ID of the Google Sheet containing the config.
+        customer_id: the Google Ads customer ID to process.
         credentials: Google Auth credentials
     """
     logger.info('Getting YouTube data for channel IDs')
@@ -190,25 +191,23 @@ def get_youtube_dataframe(
         response = request.execute()
         channels = process_youtube_response(response, chunk_list, is_translated)
         youtube_df = pd.DataFrame(channels, columns=[
-            'placement',
-            'viewCount',
-            'videoCount',
-            'subscriberCount',
+            'channel_id',
+            'view_count',
+            'video_count',
+            'subscriber_count',
             'title',
             'title_language',
             'title_language_confidence',
             'country',
-            'defaultLanguage',
-            'defaultLanguageBrand'
         ])
         youtube_df['datetime_updated'] = datetime.now()
         youtube_df = youtube_df.astype({
-            'viewCount': pd.Int64Dtype(),
-            'videoCount': pd.Int64Dtype(),
-            'subscriberCount': pd.Int64Dtype(),
+            'view_count': pd.Int64Dtype(),
+            'video_count': pd.Int64Dtype(),
+            'subscriber_count': pd.Int64Dtype(),
             'title_language_confidence': 'float',
         })
-        write_results_to_bigquery(youtube_df)
+        write_results_to_gcs(youtube_df, customer_id)
     logger.info('YouTube channel info complete')
 
 
@@ -270,8 +269,6 @@ def process_youtube_response(
             title_language,
             confidence,
             channel.get('snippet').get('country', ''),
-            channel.get('snippet').get('defaultLanguage', ''),
-            channel.get('brandingSettings').get('defaultLanguage', ''),
         ])
     return data
 
@@ -319,21 +316,29 @@ def detect_language(text: str) -> Tuple[str, float]:
     return result['language'], result['confidence']
 
 
-def write_results_to_bigquery(youtube_df: pd.DataFrame) -> None:
-    """Write the YouTube dataframe to BigQuery
+def write_results_to_gcs(youtube_df: pd.DataFrame, customer_id: str) -> None:
+    """Write the YouTube dataframe to GCS as a CSV file.
+
+    Historical data is preserved so all file writes have a UUID appended to it.
 
     Args:
         youtube_df: the dataframe based on the YouTube data.
+        customer_id: the customer ID to fetch the Google Ads data for.
     """
-    logger.info('Writing the results to BigQuery in: %s', GOOGLE_CLOUD_PROJECT)
-    logger.info('There are %s rows', len(youtube_df.index))
-    destination_table = f'ads_placement_excluder.youtube_channels'
-    logger.info('Destination is: %s', destination_table)
-    youtube_df.to_gbq(
-        destination_table=destination_table,
-        project_id=GOOGLE_CLOUD_PROJECT,
-        if_exists='append',
-    )
+    logger.info('Writing results to GCS: %s', APE_GCS_DATA_BUCKET)
+    number_of_rows = len(youtube_df.index)
+    logger.info('There are %s rows', number_of_rows)
+    if number_of_rows > 0:
+        uuid_str = str(uuid.uuid4())
+        blob_name = f'youtube_channel/{customer_id}-{uuid_str}.csv'
+        logger.info('Blob name: %s', blob_name)
+        gcs.upload_blob_from_df(
+            df=youtube_df,
+            blob_name=blob_name,
+            bucket=APE_GCS_DATA_BUCKET)
+        logger.info('Blob uploaded to GCS')
+    else:
+        logger.info('There is nothing to write to GCS')
 
 
 def send_messages_to_pubsub(customer_id: str, sheet_id: str) -> None:
@@ -343,24 +348,13 @@ def send_messages_to_pubsub(customer_id: str, sheet_id: str) -> None:
         customer_id: the customer ID to fetch the Google Ads data for.
         sheet_id: the ID of the Google Sheet containing the config.
     """
-    logger.info('Sending message to pub/sub for customer_id: %s', customer_id)
-
-    publisher = pubsub_v1.PublisherClient()
-
-    # The `topic_path` method creates a fully qualified identifier
-    # in the form `projects/{project_id}/topics/{topic_id}`
-    logger.info('Publishing to topic: %s', APE_ADS_EXCLUDER_PUBSUB_TOPIC)
-    topic_path = publisher.topic_path(
-        GOOGLE_CLOUD_PROJECT, APE_ADS_EXCLUDER_PUBSUB_TOPIC)
-    logger.info('Full topic path: %s', topic_path)
-
-    message_str = json.dumps({
+    message_dict = {
         'customer_id': customer_id,
         'sheet_id': sheet_id,
-    })
-    logger.info('Sending message: %s', message_str)
-    # Data must be a bytestring
-    data = message_str.encode("utf-8")
-    publisher.publish(topic_path, data)
-
+    }
+    logger.info('Sending message to pub/sub:', message_dict)
+    pubsub.send_dict_to_pubsub(
+        message_dict=message_dict,
+        topic=APE_ADS_EXCLUDER_PUBSUB_TOPIC,
+        gcp_project=GOOGLE_CLOUD_PROJECT)
     logger.info('Message published')

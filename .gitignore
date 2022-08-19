@@ -11,11 +11,12 @@ venvs/
 .idea/
 
 # Terraform
-terraform.tfvars
+**/*.tfvars
 **/.terraform/*
 *.tfstate
 *.tfstate.*
 .terraform.lock.hcl
+out/
 
 # Python
 __pycache__

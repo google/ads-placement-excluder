@@ -38,3 +38,9 @@ variable "config_sheet_id" {
   type        = string
   description = "The Google Sheeet ID containing the config"
 }
+
+variable "bq_dataset" {
+  type        = string
+  description = "The name of the BQ dataset"
+  default     = "ads_placement_excluder"
+}

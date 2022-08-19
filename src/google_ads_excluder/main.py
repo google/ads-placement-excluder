@@ -19,7 +19,7 @@ import os
 import sys
 from datetime import datetime
 from typing import Any, Dict, List, Union
-
+import uuid
 import google.auth
 import google.auth.credentials
 from googleapiclient.discovery import build
@@ -27,25 +27,32 @@ from google.ads.googleads.client import GoogleAdsClient
 from google.cloud import bigquery
 import jsonschema
 import pandas as pd
+from utils import gcs
 
 
 logging.basicConfig(stream=sys.stdout)
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
-# The Google Cloud project containing the BigQuery dataset
+# The Google Cloud project
 GOOGLE_CLOUD_PROJECT = os.environ.get('GOOGLE_CLOUD_PROJECT')
+# The bucket to write the data to
+APE_GCS_DATA_BUCKET = os.environ.get('APE_GCS_DATA_BUCKET')
+# The name of the BigQuery Dataset
+BQ_DATASET = os.environ.get('APE_BIGQUERY_DATASET')
 # Set False to apply the exclusions in Google Ads. If True, the call will be
 # made to the API and validated, but the exclusion won't be applied and you
 # won't see it in the UI. You probably want this to be True in a dev environment
 # and False in prod.
 VALIDATE_ONLY = os.environ.get(
     'APE_EXCLUSION_VALIDATE_ONLY', 'False').lower() in ('true', '1', 't')
+
 # The access scopes used in this function
 SCOPES = [
     'https://www.googleapis.com/auth/spreadsheets.readonly',
     'https://www.googleapis.com/auth/cloud-platform',
 ]
+
 # The schema of the JSON in the event payload
 message_schema = {
     'type': 'object',
@@ -53,7 +60,7 @@ message_schema = {
         'sheet_id': {'type': 'string'},
         'customer_id': {'type': 'string'},
     },
-    'required': ['customer_id', ]
+    'required': ['sheet_id', 'customer_id', ]
 }
 
 
@@ -100,7 +107,7 @@ def run(customer_id: str, sheet_id: str) -> None:
     placements = get_spam_placements(customer_id, filters, credentials)
     if placements is not None:
         exclude_placements_in_gads(placements, sheet_id, credentials)
-        write_exclusions_to_bigquery(customer_id, placements)
+        write_results_to_gcs(customer_id, placements)
     logger.info('Job complete')
 
 
@@ -120,7 +127,7 @@ def get_config_filters(sheet_id: str,
 
     Returns:
         SQL WHERE conditions for that can be run on BigQuery, e.g.
-        viewCount > 1000000 AND subscriberCount > 100000
+        view_count > 1000000 AND subscriber_count > 10000
     """
     logger.info('Getting config from sheet %s', sheet_id)
 
@@ -202,27 +209,24 @@ def get_spam_placements(customer_id: str,
         project=GOOGLE_CLOUD_PROJECT, credentials=credentials)
 
     query = f"""
-         WITH Excluded AS (
-            SELECT
-              placement, datetime_updated
-            FROM
-              `ads_placement_excluder.*`
-            WHERE
-              _TABLE_SUFFIX = 'excluded_channels'
-              AND customer_id={customer_id}
-          )
-          SELECT DISTINCT
-            Yt.placement
-          FROM
-            `ads_placement_excluder.google_ads_placement_report_{customer_id}` AS Ads
-          LEFT JOIN
-            ads_placement_excluder.youtube_channels AS Yt
-            USING(placement)
-          LEFT JOIN
-             Excluded
-             USING(placement)
-          WHERE Excluded.datetime_updated IS NULL
-             AND {filters}
+        SELECT DISTINCT
+            Yt.channel_id
+        FROM
+            `{BQ_DATASET}.google_ads_report` AS Ads
+        LEFT JOIN
+            {BQ_DATASET}.youtube_channel AS Yt
+            USING(channel_id)
+        LEFT JOIN
+            `{BQ_DATASET}.google_ads_exclusion` AS Excluded
+            USING(channel_id)
+        WHERE
+            Ads.customer_id = "{customer_id}"
+            AND Excluded.channel_id IS NULL
+            AND (
+                Excluded.customer_id = "{customer_id}"
+                OR Excluded.customer_id IS NULL
+            )
+            AND {filters}
         """
     logger.info('Running query: %s', query)
 
@@ -233,7 +237,7 @@ def get_spam_placements(customer_id: str,
         return None
     channel_ids = []
     for row in rows:
-        channel_ids.append(row.placement)
+        channel_ids.append(row.channel_id)
     logger.info('Received %s channel_ids', len(channel_ids))
     return channel_ids
 
@@ -246,7 +250,7 @@ def exclude_placements_in_gads(
     """Exclude the placements in the Google Ads account.
 
     Args:
-        placements: alist of placement IDs which should be excluded.
+        placements: a list of YouTube channel IDs which should be excluded.
         sheet_id: the ID of the Google Sheet containing the config.
         credentials: Google Auth credentials
     """
@@ -296,31 +300,34 @@ def exclude_placements_in_gads(
     logger.info('Done.')
 
 
-def write_exclusions_to_bigquery(customer_id: str,
-                                 placements: List[str],
-                                 ) -> None:
-    """Write the exclusions to BigQuery to maintain history of changes.
+def write_results_to_gcs(customer_id: str,
+                         placements: List[str],
+                         ) -> None:
+    """Write the exclusions to GCS as a CSV file.
+
+    Historical data is preserved so all file writes have a UUID appended to it.
 
      Args:
         customer_id: the Google Ads customer ID to process.
         placements: alist of placement IDs which should be excluded.
-
-    Returns:
-        A list of placement IDs which should be excluded.
     """
-
     exclusions_df = pd.DataFrame(placements, columns=[
-        'placement',
+        'channel_id',
     ])
     exclusions_df['customer_id'] = int(customer_id)
     exclusions_df['datetime_updated'] = datetime.now()
 
-    logger.info('Writing exclusions to BigQuery')
-    logger.info('There are %s rows', len(placements))
-    destination_table = f'ads_placement_excluder.excluded_channels'
-    logger.info('Destination is: %s', destination_table)
-    exclusions_df.to_gbq(
-        destination_table=destination_table,
-        project_id=GOOGLE_CLOUD_PROJECT,
-        if_exists='append',
-    )
+    logger.info('Writing results to GCS: %s', APE_GCS_DATA_BUCKET)
+    number_of_rows = len(exclusions_df.index)
+    logger.info('There are %s rows', number_of_rows)
+    if number_of_rows > 0:
+        uuid_str = str(uuid.uuid4())
+        blob_name = f'google_ads_exclusion/{customer_id}-{uuid_str}.csv'
+        logger.info('Blob name: %s', blob_name)
+        gcs.upload_blob_from_df(
+            df=exclusions_df,
+            blob_name=blob_name,
+            bucket=APE_GCS_DATA_BUCKET)
+        logger.info('Blob uploaded to GCS')
+    else:
+        logger.info('There is nothing to write to GCS')

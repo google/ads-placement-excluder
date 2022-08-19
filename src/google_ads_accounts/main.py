@@ -12,16 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 """Fetch the Google Ads configs and push them to pub/sub."""
-import json
 import logging
 import os
 import sys
 from typing import Any, List, Dict
 import flask
 import google.auth
-from google.cloud import pubsub_v1
 from googleapiclient.discovery import build
 import jsonschema
+from utils import pubsub
 
 
 logging.basicConfig(stream=sys.stdout)
@@ -176,19 +175,8 @@ def send_messages_to_pubsub(messages: List[Dict[str, Any]]) -> None:
     """
     logger.info('Sending messages to pubsub')
     logger.info('Messages: %s', messages)
-    publisher = pubsub_v1.PublisherClient()
-
-    # The `topic_path` method creates a fully qualified identifier
-    # in the form `projects/{project_id}/topics/{topic_id}`
-    logger.info('Publishing to topic: %s', APE_ADS_REPORT_PUBSUB_TOPIC)
-    topic_path = publisher.topic_path(GOOGLE_CLOUD_PROJECT, APE_ADS_REPORT_PUBSUB_TOPIC)
-    logger.info('Full topic path: %s', topic_path)
-
-    for message in messages:
-        message_str = json.dumps(message)
-        logger.info('Sending message: %s', message_str)
-        # Data must be a bytestring
-        data = message_str.encode("utf-8")
-        publisher.publish(topic_path, data)
-
+    pubsub.send_dicts_to_pubsub(
+        messages=messages,
+        topic=APE_ADS_REPORT_PUBSUB_TOPIC,
+        gcp_project=GOOGLE_CLOUD_PROJECT)
     logger.info('All messages published')

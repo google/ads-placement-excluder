@@ -17,6 +17,13 @@ automate identifying these placements, and exclude them from future advertising.
 
 TODO: write me.
 
+## OAuth
+
+https://www.googleapis.com/auth/spreadsheets.readonly
+https://www.googleapis.com/auth/cloud-platform
+https://www.googleapis.com/auth/youtube
+https://www.googleapis.com/auth/adwords
+
 ## Deployment
 
 TODO: explain
