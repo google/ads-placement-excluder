@@ -311,9 +311,9 @@ locals {
     }
     EOF
 }
-resource "google_cloud_scheduler_job" "gads_reporting_scheduler" {
+resource "google_cloud_scheduler_job" "ape_scheduler" {
   name             = "ads_placement_excluder"
-  description      = "Run the export from Google Ads to BigQuery"
+  description      = "Run the Ads Placement Excluder pipeline"
   schedule         = "0 * * * *"
   time_zone        = "Etc/UTC"
   attempt_deadline = "320s"
