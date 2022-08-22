@@ -134,9 +134,9 @@ def get_placements_query(
         SELECT DISTINCT
             Ads.channel_id
         FROM
-            `{BQ_DATASET}.google_ads_report` AS Ads
+            `{BQ_DATASET}.GoogleAdsReport` AS Ads
         LEFT JOIN
-            `{BQ_DATASET}.youtube_channel` AS YouTube
+            `{BQ_DATASET}.YouTubeChannel` AS YouTube
             USING(channel_id)
         WHERE
             Ads.customer_id = "{customer_id}"
