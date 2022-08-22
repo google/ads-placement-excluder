@@ -2,7 +2,7 @@
 WITH
   YouTube AS (
     SELECT *
-    FROM `${BQ_DATASET}.youtube_channel`
+    FROM `${BQ_DATASET}.YouTubeChannel`
     QUALIFY ROW_NUMBER() OVER (PARTITION BY channel_id ORDER BY datetime_updated DESC) = 1
   )
 SELECT DISTINCT
@@ -27,9 +27,9 @@ SELECT DISTINCT
   Ads.ctr,
   Ads.all_conversions_from_interactions_rate,
 FROM
-  `${BQ_DATASET}.google_ads_exclusion` AS Excluded
+  `${BQ_DATASET}.GoogleAdsExclusion` AS Excluded
 LEFT JOIN
   YouTube USING (channel_id)
 LEFT JOIN
-  `${BQ_DATASET}.google_ads_report` AS Ads
+  `${BQ_DATASET}.GoogleAdsReport` AS Ads
   USING (channel_id, customer_id)

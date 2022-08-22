@@ -216,7 +216,7 @@ resource "google_bigquery_dataset" "dataset" {
 }
 resource "google_bigquery_table" "google_ads_report_table" {
   dataset_id          = google_bigquery_dataset.dataset.dataset_id
-  table_id            = "google_ads_report"
+  table_id            = "GoogleAdsReport"
   deletion_protection = false
 
   external_data_configuration {
@@ -234,7 +234,7 @@ resource "google_bigquery_table" "google_ads_report_table" {
 }
 resource "google_bigquery_table" "youtube_channel_table" {
   dataset_id          = google_bigquery_dataset.dataset.dataset_id
-  table_id            = "youtube_channel"
+  table_id            = "YouTubeChannel"
   deletion_protection = false
 
   external_data_configuration {
@@ -252,7 +252,7 @@ resource "google_bigquery_table" "youtube_channel_table" {
 }
 resource "google_bigquery_table" "google_ads_exclusions_table" {
   dataset_id          = google_bigquery_dataset.dataset.dataset_id
-  table_id            = "google_ads_exclusion"
+  table_id            = "GoogleAdsExclusion"
   deletion_protection = false
 
   external_data_configuration {
@@ -270,7 +270,7 @@ resource "google_bigquery_table" "google_ads_exclusions_table" {
 }
 resource "google_bigquery_table" "exclusions_report" {
   dataset_id          = google_bigquery_dataset.dataset.dataset_id
-  table_id            = "view_exclusions"
+  table_id            = "ViewExclusions"
   deletion_protection = false
   depends_on          = [
     google_bigquery_dataset.dataset,
