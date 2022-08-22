@@ -1,24 +1,11 @@
-# Ads Placement Excluder
+# Ads Placement Excluder Reporting
 
-It is manual and challenging to detect YouTube channel placements which might be
-spam (low performance with high cost), and exclude them from future advertising.
-Google Ads does not currently provide enough granularity to identify all spam
-channels.
-
-Ads Placement Excluder allows an advertiser, to define what their interpretation
-of a spam channel is, and it will leverage the Google Ads & YouTube APIs to
-automate identifying these placements, and exclude them from future advertising.
-
-## Architecture
-See [architecture.md](./docs/architecture.md).
-
-## Reporting
-The solution provides a DataStudio dashboard to monitor the solution. See
-[reporting.md](./docs/reporting.md) for more information.
+There is a DataStudio dashboard that can be used to monitor the behaviour of the
+solution, and identify which channels are being excluded.
 
 ## Get Started
-See [deployment.md](./docs/deployment.md) for information on how to deploy the
-solution and get started.
+
+Coming soon...
 
 ## Disclaimers
 __This is not an officially supported Google product.__
