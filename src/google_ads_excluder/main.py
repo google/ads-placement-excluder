@@ -212,12 +212,12 @@ def get_spam_placements(customer_id: str,
         SELECT DISTINCT
             Yt.channel_id
         FROM
-            `{BQ_DATASET}.google_ads_report` AS Ads
+            `{BQ_DATASET}.GoogleAdsReport` AS Ads
         LEFT JOIN
-            {BQ_DATASET}.youtube_channel AS Yt
+            {BQ_DATASET}.YouTubeChannel AS Yt
             USING(channel_id)
         LEFT JOIN
-            `{BQ_DATASET}.google_ads_exclusion` AS Excluded
+            `{BQ_DATASET}.GoogleAdsExclusion` AS Excluded
             USING(channel_id)
         WHERE
             Ads.customer_id = "{customer_id}"
