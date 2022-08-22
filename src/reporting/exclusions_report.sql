@@ -3,6 +3,7 @@ WITH
   YouTube AS (
     SELECT *
     FROM `${BQ_DATASET}.YouTubeChannel`
+    WHERE true
     QUALIFY ROW_NUMBER() OVER (PARTITION BY channel_id ORDER BY datetime_updated DESC) = 1
   )
 SELECT DISTINCT
