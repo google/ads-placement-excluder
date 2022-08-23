@@ -3,11 +3,27 @@
 There is a DataStudio dashboard that can be used to monitor the behaviour of the
 solution, and identify which channels are being excluded.
 
+![Google Ads Account Architecture Diagram](
+./images/ape-datastudio-report-example.png)
+
 ## Get Started
 
-Coming soon...
+1. Make a copy of the template from [here](
+   https://datastudio.google.com/reporting/4a616bed-85e9-4794-a748-721051c10755)
+   to your Drive folder
+2. While copying choose `ViewExclusions` as a new data source. `ViewExclusions`
+   view will be created automatically by Terraform after the first deployment.
+   a. If `ViewExclusions` does not appear in available data sources you need to
+   Create Data Source -> Big Query -> Your Project and find `ViewExclusions`
+   table there b. You can also add a custom data source to each chart in a chart
+   setup tab afterwards
+3. Sometimes `customer_id` is auto-defined as a date leading to the chart
+   configuration error. You can change the field type manually to number via
+   Resource -> Manage Data Sources -> Edit
+4. You can adjust charts and filters according to your needs
 
 ## Disclaimers
+
 __This is not an officially supported Google product.__
 
 Copyright 2022 Google LLC. This solution, including any related sample code or
