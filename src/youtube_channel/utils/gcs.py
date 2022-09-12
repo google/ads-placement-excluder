@@ -18,7 +18,7 @@ import pandas as pd
 
 
 def upload_blob_from_df(df: pd.DataFrame, bucket: str, blob_name: str) -> Blob:
-    """Upload a Pandas DataFrame to a Google Clous Storage bucket.
+    """Upload a Pandas DataFrame to a Google Cloud Storage bucket.
 
     Args:
         df: the Pandas dataframe to upload

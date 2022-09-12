@@ -207,6 +207,9 @@ def get_youtube_dataframe(
             'subscriber_count': pd.Int64Dtype(),
             'title_language_confidence': 'float',
         })
+        # remove commas from title field as they break BigQuery even when
+        # escaped in the csv
+        youtube_df['title'] = youtube_df['title'].str.replace(',', '')
         write_results_to_gcs(youtube_df, customer_id)
     logger.info('YouTube channel info complete')
 
