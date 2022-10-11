@@ -45,6 +45,11 @@ APE_GCS_DATA_BUCKET = os.environ.get('APE_GCS_DATA_BUCKET')
 BQ_DATASET = os.environ.get('APE_BIGQUERY_DATASET')
 # The pub/sub topic to send the success message to
 APE_ADS_EXCLUDER_PUBSUB_TOPIC = os.environ.get('APE_ADS_EXCLUDER_PUBSUB_TOPIC')
+# Optional variable to specify the problematic CSV characters. This is an env
+# variable, so if any other characters come up they can be replaced in the
+# Cloud Function UI without redeploying the solution.
+APE_CSV_PROBLEM_CHARACTERS_REGEX = os.environ.get(
+    'APE_CSV_PROBLEM_CHARACTERS', r'\$|\"|\'|\r|\n|\t|,|;|:')
 
 # The access scopes used in this function
 SCOPES = ['https://www.googleapis.com/auth/spreadsheets.readonly']
@@ -201,17 +206,32 @@ def get_youtube_dataframe(
             'country',
         ])
         youtube_df['datetime_updated'] = datetime.now()
-        youtube_df = youtube_df.astype({
-            'view_count': pd.Int64Dtype(),
-            'video_count': pd.Int64Dtype(),
-            'subscriber_count': pd.Int64Dtype(),
-            'title_language_confidence': 'float',
-        })
-        # remove commas from title field as they break BigQuery even when
-        # escaped in the csv
-        youtube_df['title'] = youtube_df['title'].str.replace(',', '')
+        youtube_df = sanitise_youtube_dataframe(youtube_df)
         write_results_to_gcs(youtube_df, customer_id)
     logger.info('YouTube channel info complete')
+
+
+def sanitise_youtube_dataframe(youtube_df: pd.DataFrame) -> pd.DataFrame:
+    """Takes the dataframe from YouTube and sanitises it to write as a CSV.
+
+    Args:
+        youtube_df: the dataframe containing the YouTube data
+
+    Returns:
+        The YouTube dataframe but sanitised to be safe to write to a CSV.
+    """
+    youtube_df = youtube_df.astype({
+        'view_count': 'int',
+        'video_count': 'int',
+        'subscriber_count': 'int',
+        'title_language_confidence': 'float',
+    })
+    # remove problematic characters from the title field as the break BigQuery
+    # even when escaped in the CSV
+    youtube_df['title'] = youtube_df['title'].str.replace(
+        APE_CSV_PROBLEM_CHARACTERS_REGEX, '', regex=True)
+    youtube_df['title'] = youtube_df['title'].str.strip()
+    return youtube_df
 
 
 def split_list_to_chunks(
