@@ -67,7 +67,8 @@ These changes need to be done once manually, as they are not controlled by Terra
    URI. Make a note of the `client_id` and the `client_secret`.
 5. Open the [OAuth playground](https://developers.google.com/oauthplayground/),
    and generate a refresh token for the [above scopes](#oauth), using the
-   `client_id` and `client_secret` generated in the previous step
+   `client_id` and `client_secret` generated in the previous step:
+   ![cloud-shell](./images/oauth-configuration.png)
 6. Open Cloud Shell:
    ![cloud-shell](./images/cloud-shell.png)
 7. Enable the APIs in the project by running the following:
